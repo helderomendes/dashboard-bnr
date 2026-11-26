@@ -3,6 +3,14 @@ name: Sincronizar Meta Ads e publicar dashboard
 on:
   schedule:
     - cron: "17 */3 * * *"
+  # Publica de novo sempre que o código do dashboard muda em main
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - assets/**
+      - scripts/**
+      - .github/workflows/sync-meta.yml
   workflow_dispatch:
     inputs:
       demo:

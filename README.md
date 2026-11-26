@@ -93,7 +93,7 @@ Confira também se a branch padrão é a `main` (**Settings › General › Defa
 2. Para testar antes de ter o token da Meta, marque **"Publicar com dados fictícios"**. Assim o passo da Meta é pulado e o dashboard abre em modo demonstração.
 3. O link aparece no **resumo do job**, na linha "Dashboard: https://…". O endereço fixo é https://dashboard-bnr.vercel.app.
 
-Depois disso, o dashboard se atualiza sozinho a cada 3 horas. Para atualizar na hora, use **Run workflow** sem marcar a opção de dados fictícios.
+Depois disso, o dashboard se atualiza sozinho a cada 3 horas e também a cada mudança de código em `main`. Para atualizar na hora, use **Run workflow** sem marcar a opção de dados fictícios.
 
 | Erro no job | Causa provável |
 |---|---|
