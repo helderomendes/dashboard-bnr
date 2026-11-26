@@ -28,48 +28,76 @@ Recursos de uso:
 
 ---
 
-## Como conectar a conta (grátis, cerca de 10 minutos)
+## Como conectar a conta (grátis, cerca de 15 minutos)
 
-A arquitetura é: **GitHub Actions** (grátis) consulta a **Meta Marketing API** (grátis) a cada 3 horas e publica o site com os dados no **GitHub Pages** ou no **Cloudflare Pages** (ambos grátis). O token fica guardado como segredo no GitHub e nunca chega ao navegador.
+Como funciona: a cada 3 horas, o **GitHub Actions** busca os números na **Meta Marketing API** e publica o dashboard na **Vercel**, protegido por **usuário e senha**. Os três serviços são gratuitos (Vercel no plano Hobby). O token da Meta fica guardado como segredo no GitHub e nunca chega ao navegador. Os dados (`data/insights.json`) também só são entregues depois do login.
 
-### 1. Criar o token de acesso (Business Manager)
+```
+Meta Ads ──token só leitura──▶ GitHub Actions (a cada 3 h) ──▶ Vercel (login e senha) ──▶ navegador
+```
 
-1. Acesse **business.facebook.com › Configurações do negócio › Usuários › Usuários do sistema**.
-2. Clique em **Adicionar**, dê um nome (ex.: `dashboard-bnr`) e escolha a função **Funcionário**.
-3. Com o usuário selecionado, clique em **Atribuir ativos › Contas de anúncios › BNR Construtora 01** e marque **Ver desempenho** (só leitura).
-4. Se ainda não houver um app: **Configurações do negócio › Contas › Apps › Adicionar › Criar um novo app** (tipo *Empresa*). Um app em modo de desenvolvimento basta para ler a própria conta.
-5. De volta ao usuário do sistema: **Gerar novo token**, escolha o app, em validade selecione **Nunca** e marque a permissão **`ads_read`**. Copie o token.
-6. Copie o **ID da conta de anúncios**: é o número que aparece no Gerenciador (`act=123456789` na URL).
+### 1. Criar o token da Meta (definitivo, só leitura)
 
-> O token de Usuário do Sistema não expira e só tem leitura. Se ele vazar, revogue-o no mesmo lugar onde foi criado.
+Você precisa ser **administrador do Business** dono da conta de anúncios.
 
-### 2. Configurar o GitHub
+1. **Criar um app** (se ainda não houver): em **developers.facebook.com › Meus apps › Criar app**, escolha **Outro › Empresa**, dê o nome `Dashboard BNR` e vincule ao portfólio da BNR Construtora. Adicione o produto **API de Marketing**. O app pode ficar em modo de desenvolvimento.
+2. **Criar o usuário do sistema**: em **business.facebook.com › Configurações › Usuários › Usuários do sistema › Adicionar**, use o nome `dashboard-bnr` e a função **Funcionário**.
+3. **Atribuir ativos** ao usuário do sistema:
+   - **Contas de anúncios › BNR Construtora 01**: marque só **Ver desempenho**.
+   - **Apps › Dashboard BNR**: marque **Desenvolver app**. Sem isso, o app não aparece na hora de gerar o token.
+4. **Gerar novo token**: escolha o app, coloque a validade **Nunca** e marque só a permissão **`ads_read`**. Copie o token na hora: ele aparece uma única vez.
+5. **Conferir** em **developers.facebook.com/tools/debug/accesstoken**: precisa mostrar *Expira: Nunca*, *Escopos: ads_read* e *Tipo: System User*.
+
+> O token só para de funcionar se for revogado, se o usuário do sistema for excluído ou se o acesso à conta for removido. Nunca cole o token em chat, e-mail ou código: só no secret do GitHub.
+
+| Problema | Solução |
+|---|---|
+| Botão "Gerar novo token" cinza ou o app não aparece | Atribua o **app** ao usuário do sistema (passo 3) |
+| `ads_read` não aparece na lista | Adicione o produto **API de Marketing** no app |
+| Sem o menu "Usuários do sistema" | Você não é administrador desse Business |
+
+### 2. Criar o projeto na Vercel
+
+1. Crie uma conta grátis em **vercel.com** e um projeto vazio chamado `dashboard-bnr`. Não precisa conectar o Git: quem publica é o GitHub Actions.
+2. Em **Project › Settings › Environment Variables**, crie para **Production** (marque como *Sensitive*):
+   - `DASHBOARD_USERNAME`: o usuário de acesso ao dashboard;
+   - `DASHBOARD_PASSWORD`: uma senha forte.
+   Sem essas duas variáveis, o site responde "Dashboard indisponível".
+3. Pegue os IDs:
+   - **Team ID** (começa com `team_`): em **Team Settings › General**;
+   - **Project ID** (começa com `prj_`): em **Project Settings › General**.
+4. Crie um token em **Account Settings › Tokens**, com escopo no time do projeto.
+
+### 3. Configurar o GitHub
 
 No repositório: **Settings › Secrets and variables › Actions › New repository secret**
 
 | Secret | Valor |
 |---|---|
 | `META_ACCESS_TOKEN` | o token do passo 1 |
-| `META_AD_ACCOUNT_ID` | `act_123456789` (com ou sem `act_`) |
+| `META_AD_ACCOUNT_ID` | `act_1332542050584163` (BNR Construtora 01) |
+| `VERCEL_TOKEN` | o token da Vercel |
+| `VERCEL_ORG_ID` | o Team ID (`team_…`) |
+| `VERCEL_PROJECT_ID` | o Project ID (`prj_…`) |
 
 Variáveis opcionais (aba *Variables*): `DAYS` (histórico, padrão 180), `META_API_VERSION` (padrão `v23.0`) e `LEAD_ACTION_TYPES` (veja "O que conta como lead").
 
-### 3. Publicar — escolha uma opção
+Confira também se a branch padrão é a `main` (**Settings › General › Default branch**). O GitHub só roda a atualização agendada na branch padrão.
 
-**Opção A: GitHub Pages (mais simples)**
-1. **Settings › Pages › Source: GitHub Actions**.
-2. Em **Actions › Sincronizar Meta Ads e publicar dashboard › Run workflow**.
-3. O link aparece no final do job (`https://<usuario>.github.io/dashboard-bnr/`).
+### 4. Publicar
 
-⚠️ No GitHub Pages **qualquer pessoa com o link** vê os dados. A página tem `noindex` e não aparece no Google, mas não há senha. Se precisar de login, use a opção B.
+1. Vá em **Actions › Sincronizar Meta Ads e publicar dashboard › Run workflow**.
+2. Para testar antes de ter o token da Meta, marque **"Publicar com dados fictícios"**. Assim o passo da Meta é pulado e o dashboard abre em modo demonstração.
+3. O link aparece no **resumo do job**, na linha "Dashboard: https://…". Ao abrir, o navegador pede o usuário e a senha do passo 2.
 
-**Opção B: Cloudflare Pages + login por e-mail (recomendada para cliente)**
-1. Crie uma conta grátis na Cloudflare e, em **Workers & Pages**, um projeto Pages chamado `dashboard-bnr` (upload direto).
-2. Crie um API Token com permissão **Cloudflare Pages: Edit**.
-3. No GitHub, adicione os secrets `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID` e a variável `DEPLOY_TARGET = cloudflare`.
-4. Em **Zero Trust › Access › Applications**, proteja o domínio `dashboard-bnr.pages.dev` com uma política que libere só os e-mails autorizados (grátis até 50 usuários). Quem acessar recebe um código no e-mail.
+Depois disso, o dashboard se atualiza sozinho a cada 3 horas. Para atualizar na hora, use **Run workflow** sem marcar a opção de dados fictícios.
 
-A partir daí, o dashboard se atualiza sozinho a cada 3 horas. Para atualizar na hora, use **Run workflow**.
+| Erro no job | Causa provável |
+|---|---|
+| `Configure VERCEL_… no GitHub Actions` | Falta um dos secrets da Vercel |
+| `Could not retrieve Project Settings` / erro no passo "Vincular projeto da Vercel" | `VERCEL_ORG_ID` ou `VERCEL_PROJECT_ID` errado, ou o token não tem acesso ao time |
+| `Token inválido ou expirado (erro 190)` | Gere de novo o token da Meta (passo 1) |
+| `Sem permissão na conta (erro 200/10)` | O usuário do sistema não tem a conta de anúncios atribuída |
 
 ### Rodar no seu computador
 
@@ -120,7 +148,7 @@ assets/app.js              filtros, agregações, gráficos, tabela, insights
 assets/csv.js              importador do CSV do Gerenciador
 assets/demo.js             dados de demonstração (quando não há sincronização)
 scripts/fetch-meta.mjs     Meta Marketing API → data/insights.json
-.github/workflows/         sincronização a cada 3 h + publicação
+.github/workflows/         sincronização a cada 3 h + publicação na Vercel (com login)
 ```
 
 Enquanto não houver `data/insights.json`, o dashboard abre em **modo demonstração**. Também dá para forçar esse modo com `?demo=1`.
