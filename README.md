@@ -30,10 +30,10 @@ Recursos de uso:
 
 ## Como conectar a conta (grátis, cerca de 15 minutos)
 
-Como funciona: a cada 3 horas, o **GitHub Actions** busca os números na **Meta Marketing API** e publica o dashboard na **Vercel**, protegido por **usuário e senha**. Os três serviços são gratuitos (Vercel no plano Hobby). O token da Meta fica guardado como segredo no GitHub e nunca chega ao navegador. Os dados (`data/insights.json`) também só são entregues depois do login.
+Como funciona: a cada 3 horas, o **GitHub Actions** busca os números na **Meta Marketing API** e publica o dashboard na **Vercel**, em https://dashboard-bnr.vercel.app. A página é aberta (sem login), mas responde com `X-Robots-Tag: noindex` para não aparecer em buscadores. Quem tiver o link vê os números. Os três serviços são gratuitos (Vercel no plano Hobby). O token da Meta fica guardado como segredo no GitHub e nunca chega ao navegador.
 
 ```
-Meta Ads ──token só leitura──▶ GitHub Actions (a cada 3 h) ──▶ Vercel (login e senha) ──▶ navegador
+Meta Ads ──token só leitura──▶ GitHub Actions (a cada 3 h) ──▶ Vercel (noindex) ──▶ navegador
 ```
 
 ### 1. Criar o token da Meta (definitivo, só leitura)
@@ -59,14 +59,10 @@ Você precisa ser **administrador do Business** dono da conta de anúncios.
 ### 2. Criar o projeto na Vercel
 
 1. Crie uma conta grátis em **vercel.com** e um projeto vazio chamado `dashboard-bnr`. Não precisa conectar o Git: quem publica é o GitHub Actions.
-2. Em **Project › Settings › Environment Variables**, crie para **Production** (marque como *Sensitive*):
-   - `DASHBOARD_USERNAME`: o usuário de acesso ao dashboard;
-   - `DASHBOARD_PASSWORD`: uma senha forte.
-   Sem essas duas variáveis, o site responde "Dashboard indisponível".
-3. Pegue os IDs:
+2. Pegue os IDs:
    - **Team ID** (começa com `team_`): em **Team Settings › General**;
    - **Project ID** (começa com `prj_`): em **Project Settings › General**.
-4. Crie um token em **Account Settings › Tokens**, com escopo no time do projeto.
+3. Crie um token em **Account Settings › Tokens**, com escopo no time do projeto.
 
 ### 3. Configurar o GitHub
 
@@ -95,7 +91,7 @@ Confira também se a branch padrão é a `main` (**Settings › General › Defa
 
 1. Vá em **Actions › Sincronizar Meta Ads e publicar dashboard › Run workflow**.
 2. Para testar antes de ter o token da Meta, marque **"Publicar com dados fictícios"**. Assim o passo da Meta é pulado e o dashboard abre em modo demonstração.
-3. O link aparece no **resumo do job**, na linha "Dashboard: https://…". Ao abrir, o navegador pede o usuário e a senha do passo 2.
+3. O link aparece no **resumo do job**, na linha "Dashboard: https://…". O endereço fixo é https://dashboard-bnr.vercel.app.
 
 Depois disso, o dashboard se atualiza sozinho a cada 3 horas. Para atualizar na hora, use **Run workflow** sem marcar a opção de dados fictícios.
 
@@ -155,7 +151,7 @@ assets/app.js              filtros, agregações, gráficos, tabela, insights
 assets/csv.js              importador do CSV do Gerenciador
 assets/demo.js             dados de demonstração (quando não há sincronização)
 scripts/fetch-meta.mjs     Meta Marketing API → data/insights.json
-.github/workflows/         sincronização a cada 3 h + publicação na Vercel (com login)
+.github/workflows/         sincronização a cada 3 h + publicação na Vercel
 ```
 
 Enquanto não houver `data/insights.json`, o dashboard abre em **modo demonstração**. Também dá para forçar esse modo com `?demo=1`.

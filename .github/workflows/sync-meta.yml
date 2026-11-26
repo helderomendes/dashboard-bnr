@@ -95,7 +95,7 @@ jobs:
           path: .cache/insights.enc
           key: meta-insights-v1-${{ github.run_id }}
 
-      - name: Montar o dashboard protegido
+      - name: Montar o dashboard
         run: |
           bundle=.vercel/output/functions/dashboard.func
           mkdir -p "$bundle/site"
@@ -107,7 +107,6 @@ jobs:
           {"runtime":"nodejs22.x","handler":"index.cjs","launcherType":"Nodejs"}
           JSON
           cat > "$bundle/index.cjs" <<'JS'
-          const { createHash, timingSafeEqual } = require('node:crypto');
           const { readFile } = require('node:fs/promises');
           const { extname, join } = require('node:path');
 
@@ -125,28 +124,10 @@ jobs:
             '.woff2': 'font/woff2',
           };
 
-          function digest(value) {
-            return createHash('sha256').update(value).digest();
-          }
-
           module.exports = async function dashboard(req, res) {
             res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-            res.setHeader('Cache-Control', 'private, no-store');
+            res.setHeader('Cache-Control', 'no-store');
             res.setHeader('X-Content-Type-Options', 'nosniff');
-
-            const username = process.env.DASHBOARD_USERNAME;
-            const password = process.env.DASHBOARD_PASSWORD;
-            if (!username || !password) {
-              res.statusCode = 503;
-              return res.end('Dashboard indisponível.');
-            }
-
-            const expected = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
-            if (!timingSafeEqual(digest(req.headers.authorization || ''), digest(expected))) {
-              res.statusCode = 401;
-              res.setHeader('WWW-Authenticate', 'Basic realm="Dashboard BNR", charset="UTF-8"');
-              return res.end('Autenticação necessária.');
-            }
 
             if (req.method !== 'GET' && req.method !== 'HEAD') {
               res.statusCode = 405;
