@@ -13,7 +13,7 @@ Você é um designer de produto sênior especializado em dashboards analíticos 
 
 ## Como revisar
 1. Leia `index.html`, `assets/styles.css` e as funções de render em `assets/app.js`.
-2. Tire screenshots com Playwright (já instalado; `require('playwright')`). O CDN pode estar bloqueado no sandbox: intercepte `**/echarts.min.js` com um arquivo local de `node_modules/echarts/dist/echarts.min.js` (instale `echarts@5.5.1` numa pasta temporária, se precisar) e responda `fonts.googleapis.com` com CSS vazio. Abra `file:///<repo>/index.html` (fica em modo demonstração). Capture cada página (`#/visao-geral`, `#/origem`, `#/anuncios`, `#/campanhas`, `#/publico`, `#/configuracoes`) em 1440×900 claro, 1440×900 escuro (`colorScheme: 'dark'`) e 390×844 claro. Use deviceScaleFactor 1.
+2. Tire screenshots com Playwright (já instalado; `require('playwright')`). O ECharts já é servido de `assets/vendor/echarts.min.js`; não intercepte esse arquivo, para que um caminho quebrado apareça no teste. Responda `fonts.googleapis.com` com CSS vazio. Abra `file:///<repo>/index.html` (fica em modo demonstração). Capture cada página (`#/visao-geral`, `#/origem`, `#/anuncios`, `#/campanhas`, `#/publico`, `#/configuracoes`) em 1440×900 claro, 1440×900 escuro (`colorScheme: 'dark'`) e 390×844 claro. Use deviceScaleFactor 1.
 3. Meça, não chute: rolagem horizontal (`scrollWidth > clientWidth`), textos truncados, contraste dos pares de cor principais (meta WCAG AA 4.5:1 para texto normal), áreas de toque com menos de 40px no mobile e erros de console.
 4. Compare com a referência: alinhamento, espaçamento, raio, peso tipográfico, densidade por tela.
 

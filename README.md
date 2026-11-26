@@ -138,7 +138,7 @@ O CSV é lido só no navegador; nada é enviado para servidor nenhum. As quebras
 - **Quebras** (posicionamento, idade/gênero, região) vêm no nível de campanha. Por isso respeitam o filtro de campanha, mas não o de conjunto ou anúncio.
 - **Alcance/frequência** não aparecem de propósito: o alcance não pode ser somado entre dias, e mostrar uma soma diária daria um número errado.
 - Os anúncios excluídos continuam no histórico, com o nome tirado dos próprios insights.
-- Stack: HTML + CSS + JS puros e [Apache ECharts](https://echarts.apache.org) via CDN. Não há build e o script de sincronização não tem dependências (Node 20).
+- Stack: HTML + CSS + JS puros e [Apache ECharts](https://echarts.apache.org) 5.5.1 servido localmente em `assets/vendor/` (licença Apache-2.0 em `assets/vendor/ECHARTS-LICENSE.txt`). Não há build e o script de sincronização não tem dependências (Node 20).
 - **Personalização visual**: as cores ficam em `assets/styles.css` (`--accent`, `--brand`, `--chart-*`). Para usar a identidade da BNR, troque esses tokens e o bloco `.logo`.
 
 ```
