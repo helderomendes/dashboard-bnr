@@ -2,32 +2,25 @@ name: Sincronizar Meta Ads e publicar dashboard
 
 on:
   schedule:
-    - cron: "17 */3 * * *"   # a cada 3 horas (UTC)
-  workflow_dispatch:          # botão "Run workflow" para atualizar na hora
-  push:
-    branches: [main]
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: dashboard-vercel
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Buscar dados da Meta Marketing API
         env:
@@ -36,36 +29,97 @@ jobs:
           DAYS: ${{ vars.DAYS || '180' }}
           META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
           LEAD_ACTION_TYPES: ${{ vars.LEAD_ACTION_TYPES }}
-          OUT: _site/data/insights.json
-        run: node scripts/fetch-meta.mjs
+          OUT: .vercel/output/functions/dashboard.func/site/data/insights.json
+        run: |
+          mkdir -p "$(dirname "$OUT")"
+          node scripts/fetch-meta.mjs
 
-      - name: Montar site
-        run: cp -r index.html assets _site/
+      - name: Montar o dashboard protegido
+        run: |
+          bundle=.vercel/output/functions/dashboard.func
+          cp -r index.html assets "$bundle/site/"
+          cat > .vercel/output/config.json <<'JSON'
+          {"version":3,"routes":[{"src":"^/(.*)$","dest":"/dashboard?asset=$1"}]}
+          JSON
+          cat > "$bundle/.vc-config.json" <<'JSON'
+          {"runtime":"nodejs22.x","handler":"index.cjs","launcherType":"Nodejs"}
+          JSON
+          cat > "$bundle/index.cjs" <<'JS'
+          const { createHash, timingSafeEqual } = require('node:crypto');
+          const { readFile } = require('node:fs/promises');
+          const { extname, join } = require('node:path');
 
-      # Opção A (padrão): GitHub Pages
-      - if: vars.DEPLOY_TARGET != 'cloudflare'
-        uses: actions/configure-pages@v5
-      - if: vars.DEPLOY_TARGET != 'cloudflare'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
+          const types = {
+            '.html': 'text/html; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+            '.js': 'text/javascript; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml',
+            '.ico': 'image/x-icon',
+            '.woff2': 'font/woff2',
+          };
 
-      # Opção B: Cloudflare Pages (permite exigir login por e-mail com Cloudflare Access, grátis)
-      - name: Publicar no Cloudflare Pages
-        if: vars.DEPLOY_TARGET == 'cloudflare' && env.CF_TOKEN != ''
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy _site --project-name=${{ vars.CF_PROJECT || 'dashboard-bnr' }} --branch=main
+          function digest(value) {
+            return createHash('sha256').update(value).digest();
+          }
 
-  deploy:
-    needs: build
-    if: vars.DEPLOY_TARGET != 'cloudflare'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          module.exports = async function dashboard(req, res) {
+            res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+
+            const username = process.env.DASHBOARD_USERNAME;
+            const password = process.env.DASHBOARD_PASSWORD;
+            if (!username || !password) {
+              res.statusCode = 503;
+              return res.end('Dashboard indisponível.');
+            }
+
+            const expected = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
+            if (!timingSafeEqual(digest(req.headers.authorization || ''), digest(expected))) {
+              res.statusCode = 401;
+              res.setHeader('WWW-Authenticate', 'Basic realm="Dashboard BNR", charset="UTF-8"');
+              return res.end('Autenticação necessária.');
+            }
+
+            if (req.method !== 'GET' && req.method !== 'HEAD') {
+              res.statusCode = 405;
+              res.setHeader('Allow', 'GET, HEAD');
+              return res.end();
+            }
+
+            const asset = new URL(req.url, 'http://localhost').searchParams.get('asset') || 'index.html';
+            const isAsset = /^assets\/(?:[\w-]+\/)*[\w.-]+$/.test(asset);
+            const contentType = types[extname(asset).toLowerCase()];
+            if ((!isAsset && asset !== 'index.html' && asset !== 'data/insights.json') || !contentType) {
+              res.statusCode = 404;
+              return res.end();
+            }
+
+            try {
+              const bytes = await readFile(join(__dirname, 'site', asset));
+              res.setHeader('Content-Type', contentType);
+              return res.end(req.method === 'HEAD' ? undefined : bytes);
+            } catch (error) {
+              res.statusCode = error.code === 'ENOENT' || error.code === 'EISDIR' ? 404 : 500;
+              return res.end();
+            }
+          };
+          JS
+          node --check "$bundle/index.cjs"
+
+      - name: Publicar na Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          : "${VERCEL_TOKEN:?Configure VERCEL_TOKEN no GitHub Actions}"
+          : "${VERCEL_ORG_ID:?Configure VERCEL_ORG_ID no GitHub Actions}"
+          : "${VERCEL_PROJECT_ID:?Configure VERCEL_PROJECT_ID no GitHub Actions}"
+          url="$(npx --yes vercel@48 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
+          echo "Dashboard: $url" >> "$GITHUB_STEP_SUMMARY"
