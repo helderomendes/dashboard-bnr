@@ -79,8 +79,15 @@ No repositório: **Settings › Secrets and variables › Actions › New reposi
 | `VERCEL_TOKEN` | o token da Vercel |
 | `VERCEL_ORG_ID` | o Team ID (`team_…`) |
 | `VERCEL_PROJECT_ID` | o Project ID (`prj_…`) |
+| `CACHE_KEY` | opcional: frase aleatória com 40 ou mais caracteres. Liga o cache incremental |
 
-Variáveis opcionais (aba *Variables*): `DAYS` (histórico, padrão 180), `META_API_VERSION` (padrão `v23.0`) e `LEAD_ACTION_TYPES` (veja "O que conta como lead").
+Variáveis opcionais (aba *Variables*): `DAYS` (histórico da primeira carga, padrão 180), `REFRESH_DAYS` (dias recentes rebaixados a cada execução, padrão 28), `MAX_DAYS` (teto do histórico acumulado, padrão 730), `META_API_VERSION` (padrão `v23.0`) e `LEAD_ACTION_TYPES` (veja "O que conta como lead").
+
+#### Cache incremental
+
+Com `CACHE_KEY` definido, cada execução guarda o resultado no cache do GitHub Actions, **cifrado com AES-256-GCM** (o repositório é público, então nada fica legível fora do job). Na execução seguinte, só os últimos `REFRESH_DAYS` são baixados de novo, porque a Meta ainda ajusta atribuição e leads nesses dias. O resto é reaproveitado e o histórico passa a acumular além de `DAYS`, até `MAX_DAYS`.
+
+Se o cache sumir (o GitHub apaga entradas sem uso por 7 dias), se a chave mudar ou se `LEAD_ACTION_TYPES` mudar, a execução simplesmente baixa o histórico completo de novo. Sem `CACHE_KEY`, tudo funciona como antes, sem cache.
 
 Confira também se a branch padrão é a `main` (**Settings › General › Default branch**). O GitHub só roda a atualização agendada na branch padrão.
 

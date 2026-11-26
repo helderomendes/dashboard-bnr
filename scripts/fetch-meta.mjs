@@ -12,8 +12,12 @@
  *   LEAD_ACTION_TYPES   lista separada por vírgula para sobrescrever o que conta como lead
  *   MSG_ACTION_TYPES    idem para conversas (padrão: conversas por mensagem iniciadas)
  *   OUT                 caminho de saída (padrão data/insights.json)
+ *   PREV                JSON da sincronização anterior (cache). Se existir e for da mesma conta,
+ *                       só os últimos REFRESH_DAYS são baixados de novo; o resto é reaproveitado.
+ *   REFRESH_DAYS        dias recentes sempre rebaixados, porque a Meta ainda ajusta atribuição (padrão 28)
+ *   MAX_DAYS            teto do histórico acumulado (padrão 730)
  */
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const TOKEN = process.env.META_ACCESS_TOKEN;
@@ -22,6 +26,9 @@ const ACCOUNT = RAW_ACCOUNT.startsWith('act_') ? RAW_ACCOUNT : `act_${RAW_ACCOUN
 const VERSION = process.env.META_API_VERSION || 'v23.0';
 const DAYS = Math.max(1, parseInt(process.env.DAYS || '180', 10));
 const OUT = process.env.OUT || 'data/insights.json';
+const PREV = process.env.PREV || '';
+const REFRESH_DAYS = Math.max(1, parseInt(process.env.REFRESH_DAYS || '28', 10));
+const MAX_DAYS = Math.max(DAYS, parseInt(process.env.MAX_DAYS || '730', 10));
 const BASE = `https://graph.facebook.com/${VERSION}`;
 
 const LEAD_TYPES = (process.env.LEAD_ACTION_TYPES || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -113,12 +120,42 @@ async function insights(level, since, until, extra = {}) {
   return rows;
 }
 
+const daysAgo = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() - n); return iso(d); };
+// Mudou a definição de lead/conversa? Então os dias antigos do cache não valem mais.
+const SIG = JSON.stringify({ lead: LEAD_TYPES, msg: MSG_TYPES });
+
+async function loadPrev() {
+  if (!PREV) return null;
+  try {
+    const p = JSON.parse(await readFile(PREV, 'utf8'));
+    if (p.source !== 'live' || p.account?.id !== ACCOUNT || !p.range?.since || !Array.isArray(p.daily?.rows)) return null;
+    if ((p.sync?.sig ?? SIG) !== SIG) { console.log('• Cache ignorado: a definição de lead/conversa mudou'); return null; }
+    return p;
+  } catch (e) {
+    console.log(`• Sem cache anterior utilizável (${e.code || e.message})`);
+    return null;
+  }
+}
+
 async function main() {
   const t0 = Date.now();
   const until = iso(new Date());
-  const sinceD = new Date(); sinceD.setUTCDate(sinceD.getUTCDate() - DAYS + 1);
-  const since = iso(sinceD);
-  console.log(`▶ Sincronizando ${ACCOUNT} de ${since} a ${until} (API ${VERSION})`);
+  const floor = daysAgo(MAX_DAYS - 1);
+  const prev = await loadPrev();
+  let since = daysAgo(DAYS - 1);
+  let fetchSince = since;
+  if (prev) {
+    // reaproveita os dias antigos e rebaixa só a janela recente
+    fetchSince = daysAgo(REFRESH_DAYS - 1);
+    if (prev.range.until < fetchSince) fetchSince = prev.range.until; // cache velho: cobre o buraco
+    if (prev.range.since > since) fetchSince = since; // cache mais curto que DAYS: rebaixa tudo
+    since = prev.range.since < since ? prev.range.since : since;
+    if (since < floor) since = floor;
+    if (fetchSince < since) fetchSince = since;
+  }
+  console.log(prev
+    ? `▶ Sincronizando ${ACCOUNT}: histórico ${since} a ${until}, baixando ${fetchSince} a ${until} (cache reaproveitado; API ${VERSION})`
+    : `▶ Sincronizando ${ACCOUNT} de ${since} a ${until} (sem cache; API ${VERSION})`);
 
   const account = await request(buildUrl(ACCOUNT, { fields: 'name,currency,timezone_name,account_status' }));
 
@@ -135,10 +172,19 @@ async function main() {
     version: 1, source: 'live', generatedAt: new Date().toISOString(),
     account: { id: ACCOUNT, name: account.name, currency: account.currency, timezone: account.timezone_name },
     range: { since, until },
+    sync: { sig: SIG, fetchedFrom: fetchSince, cached: !!prev },
     campaigns: {}, adsets: {}, ads: {},
     daily: { cols: ['d', 'ad', 'spend', 'imp', 'clk', 'lclk', 'leads', 'msgs'], rows: [] },
     breakdowns: {},
   };
+  // dias antigos vêm do cache; a estrutura atual da Meta sobrescreve nomes e status
+  const keep = (d) => d >= since && d < fetchSince;
+  if (prev) {
+    Object.assign(data.campaigns, prev.campaigns);
+    Object.assign(data.adsets, prev.adsets);
+    Object.assign(data.ads, prev.ads);
+    data.daily.rows.push(...prev.daily.rows.filter((r) => keep(r[0])));
+  }
   for (const c of campaigns) data.campaigns[c.id] = { name: c.name, status: c.effective_status, objective: c.objective };
   for (const s of adsets) data.adsets[s.id] = { name: s.name, status: s.effective_status, campaignId: s.campaign_id, optimization: s.optimization_goal };
   for (const a of ads) {
@@ -153,7 +199,7 @@ async function main() {
   }
 
   console.log('• Insights diários por anúncio');
-  for (const r of await insights('ad', since, until)) {
+  for (const r of await insights('ad', fetchSince, until)) {
     const m = actionMap(r.actions);
     // anúncios excluídos podem não vir na listagem — usa nomes do próprio insight
     if (!data.campaigns[r.campaign_id]) data.campaigns[r.campaign_id] = { name: r.campaign_name, status: 'DELETED' };
@@ -166,20 +212,25 @@ async function main() {
   for (const [name, breakdowns] of Object.entries(BD)) {
     console.log(`• Quebra: ${name}`);
     try {
-      const rows = await insights('campaign', since, until, { breakdowns });
+      const old = prev?.breakdowns?.[name]?.rows;
+      // sem cache desta quebra, baixa o período inteiro
+      const from = old ? fetchSince : since;
+      const rows = await insights('campaign', from, until, { breakdowns });
       const keys = breakdowns.split(',');
       data.breakdowns[name] = {
         cols: ['d', 'c', 'k', 'spend', 'imp', 'lclk', 'leads', 'msgs'],
-        rows: rows.map((r) => { const m = actionMap(r.actions); return [r.date_start, r.campaign_id, keys.map((k) => r[k]).join('|'), round2(+r.spend || 0), +r.impressions || 0, +r.inline_link_clicks || 0, leadsOf(m), msgsOf(m)]; }),
+        rows: (old ? old.filter((r) => keep(r[0])) : []).concat(rows.map((r) => { const m = actionMap(r.actions); return [r.date_start, r.campaign_id, keys.map((k) => r[k]).join('|'), round2(+r.spend || 0), +r.impressions || 0, +r.inline_link_clicks || 0, leadsOf(m), msgsOf(m)]; })),
       };
     } catch (e) {
       console.warn(`  ! quebra ${name} ignorada: ${e.message}`);
+      if (prev?.breakdowns?.[name]) data.breakdowns[name] = prev.breakdowns[name];
     }
   }
 
   // remove estrutura sem nenhuma veiculação no período (deixa o JSON enxuto)
   const used = new Set(data.daily.rows.map((r) => r[1]));
   for (const id of Object.keys(data.ads)) if (!used.has(id) && data.ads[id].status !== 'ACTIVE') delete data.ads[id];
+  data.daily.rows.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 
   await mkdir(dirname(OUT), { recursive: true });
   await writeFile(OUT, JSON.stringify(data));
