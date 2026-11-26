@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BNR Meta Ads</title>
+  <meta name="description" content="Dashboard de performance Meta Ads da BNR Construtora: de onde vem cada lead, CPL por campanha, conjunto e anúncio." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232563eb'/%3E%3Cpath d='M16 46V26l16-10 16 10v20H38V34H26v12z' fill='%23fff'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <script>
+    try { const t = localStorage.getItem('bnr.theme'); if (t) document.documentElement.dataset.theme = t.replace(/"/g, ''); } catch (e) {}
+  </script>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" aria-label="Navegação">
+   <div class="side-inner">
+    <div class="side-brand">
+      <span class="side-logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 20V10l8-5 8 5v10h-5v-6H9v6z"/></svg></span>
+      <span>BNR <b>Ads</b></span>
+    </div>
+    <nav class="nav" id="nav">
+      <a href="#/visao-geral" data-page="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg><span>Visão geral</span><em>Geral</em></a>
+      <a href="#/origem" data-page="origin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="12" r="2"/><path d="M7 6c6 0 5 6 10 6M7 18c6 0 5-6 10-6"/></svg><span>Origem dos leads</span><em>Origem</em></a>
+      <a href="#/anuncios" data-page="ads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 9"/></svg><span>Anúncios</span><em>Anúncios</em></a>
+      <a href="#/campanhas" data-page="campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Campanhas</span><em>Campanhas</em></a>
+      <a href="#/publico" data-page="audience"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9.4 5 2.7 5 5.8"/></svg><span>Público</span><em>Público</em></a>
+      <hr />
+      <a href="#/configuracoes" data-page="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Configurações</span><em>Ajustes</em></a>
+    </nav>
+    <div class="side-status" id="side-status"></div>
+   </div>
+  </aside>
+
+  <!-- ============ PAINEL ============ -->
+  <div class="panel">
+    <header class="topbar">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="q" placeholder="Buscar campanha, conjunto ou anúncio" autocomplete="off" aria-label="Buscar" />
+        <kbd>/</kbd>
+      </div>
+      <div class="top-actions">
+        <div class="pop-wrap">
+          <button class="btn" id="date-btn" aria-haspopup="dialog" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <span id="date-label">Últimos 30 dias</span>
+            <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="popover date-pop hidden" id="date-pop" role="dialog" aria-label="Período">
+            <div class="preset-list" id="preset-list"></div>
+            <div class="custom-range">
+              <label>De <input type="date" id="since" /></label>
+              <label>Até <input type="date" id="until" /></label>
+              <button class="btn primary" id="apply-range">Aplicar período</button>
+              <div class="hint" id="range-hint"></div>
+            </div>
+          </div>
+        </div>
+        <div class="seg" role="group" aria-label="O que contar como resultado" id="mode-seg">
+          <button data-mode="leads" aria-pressed="true" title="Formulário instantâneo + leads no site (pixel)">Leads</button>
+          <button data-mode="msgs" aria-pressed="false" title="Conversas iniciadas no WhatsApp, Messenger ou Direct">Conversas</button>
+          <button data-mode="all" aria-pressed="false" title="Leads + conversas">Todos</button>
+        </div>
+        <button class="icon-btn" id="theme-btn" title="Alternar tema" aria-label="Alternar tema claro/escuro">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+        <div class="account" id="account">
+          <span class="avatar">B</span>
+          <span class="account-txt"><b id="account-name">BNR Construtora 01</b><small id="account-sub">Carregando…</small></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="content" id="main">
+      <div class="page-head">
+        <div>
+          <h1 id="page-title">Visão geral</h1>
+          <p id="page-sub">Como está a captação de leads no período</p>
+        </div>
+        <div class="page-actions">
+          <div class="pop-wrap" id="ms-campaigns"></div>
+          <div class="pop-wrap" id="ms-adsets"></div>
+          <button class="btn primary" id="export-csv" aria-label="Exportar anúncios em CSV">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span class="btn-txt">Exportar</span>
+          </button>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+
+      <!-- ---------- VISÃO GERAL ---------- -->
+      <section class="view" data-view="overview">
+        <div class="kpis" id="kpis"></div>
+
+        <div class="grid g-ov">
+          <article class="card">
+            <div class="card-head">
+              <span class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+              <div><h2 id="trend-title">Leads por dia</h2></div>
+              <div class="seg sm" id="gran-seg">
+                <button data-g="day" aria-pressed="true">Dia</button>
+                <button data-g="week" aria-pressed="false">Semana</button>
+                <button data-g="month" aria-pressed="false">Mês</button>
+              </div>
+            </div>
+            <div class="chart" id="trend-chart"></div>
+          </article>
+
+          <article class="card spend-card">
+            <div class="card-head">
+              <span class="card-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg></span>
+              <div><h2>Investimento</h2><p>Total no período</p></div>
+            </div>
+            <div class="spend-value" id="spend-value"></div>
+            <div class="chart" id="spend-chart"></div>
+          </article>
+
+          <article class="card side-card">
+            <div class="mini-head"><h2>Atenção</h2><a href="#/anuncios" class="link">Ver anúncios ↗</a></div>
+            <div class="rows" id="alerts"></div>
+            <div class="mini-head"><h2>Oportunidades</h2></div>
+            <div class="rows" id="opps"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Melhores anúncios</h2><p id="top-sub">Menor custo por lead no período</p></div>
+            <div class="card-actions">
+              <select id="top-sort" class="select" aria-label="Ordenar">
+                <option value="cpl">Menor CPL</option>
+                <option value="res">Mais leads</option>
+                <option value="spend">Maior investimento</option>
+              </select>
+              <a class="btn primary" href="#/anuncios">Ver todos</a>
+            </div>
+          </div>
+          <div class="list" id="top-ads"></div>
+        </article>
+      </section>
+
+      <!-- ---------- ORIGEM ---------- -->
+      <section class="view" data-view="origin" hidden>
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Caminho de cada lead</h2><p>Campanha → Conjunto → Anúncio. A espessura é o volume de leads. Clique para filtrar.</p></div>
+          </div>
+          <div class="chart" id="sankey-chart" style="height:460px"></div>
+        </article>
+        <div class="grid g-2e">
+          <article class="card">
+            <div class="card-head">
+              <div><h2>Participação por campanha</h2><p>Quanto cada campanha entrega</p></div>
+              <div class="seg sm" id="share-seg">
+                <button data-s="res" aria-pressed="true">Leads</button>
+                <button data-s="spend" aria-pressed="false">Verba</button>
+              </div>
+            </div>
+            <div class="chart" id="share-chart" style="height:340px"></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Funil</h2><p>Da impressão ao lead</p></div></div>
+            <div class="funnel" id="funnel"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ---------- ANÚNCIOS ---------- -->
+      <section class="view" data-view="ads" hidden>
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Ranking de criativos</h2><p id="rank-sub"></p></div>
+            <div class="card-actions">
+              <select id="rank-sort" class="select" aria-label="Ordenar">
+                <option value="cpl">Menor CPL</option>
+                <option value="res">Mais leads</option>
+                <option value="spend">Maior investimento</option>
+                <option value="ctr">Maior CTR</option>
+                <option value="worst">Pior CPL</option>
+              </select>
+              <label class="field" title="Anúncios com menos leads que isso não entram no ranking de CPL">Mín. leads <input type="number" id="min-res" min="0" step="1" value="3" /></label>
+              <label class="field" title="Verde até a meta, amarelo até 30% acima, vermelho acima disso">Meta CPL <input type="number" id="cpl-goal" min="0" step="1" placeholder="auto" /></label>
+            </div>
+          </div>
+          <div class="rank-grid" id="ranking"></div>
+          <div class="more"><button class="btn" id="rank-more">Carregar mais</button></div>
+        </article>
+      </section>
+
+      <!-- ---------- CAMPANHAS ---------- -->
+      <section class="view" data-view="campaigns" hidden>
+        <article class="card flush">
+          <div class="card-head">
+            <div><h2>Desempenho detalhado</h2><p>Clique na linha para abrir os níveis; clique no anúncio para ver o criativo</p></div>
+            <div class="card-actions">
+              <div class="seg sm" id="status-seg">
+                <button data-status="all" aria-pressed="true">Todos</button>
+                <button data-status="active" aria-pressed="false">Ativos</button>
+                <button data-status="inactive" aria-pressed="false">Pausados</button>
+              </div>
+              <div class="seg sm" id="table-seg">
+                <button data-v="tree" aria-pressed="true">Hierarquia</button>
+                <button data-v="campaign" aria-pressed="false">Campanhas</button>
+                <button data-v="adset" aria-pressed="false">Conjuntos</button>
+                <button data-v="ad" aria-pressed="false">Anúncios</button>
+              </div>
+              <button class="btn" id="expand-all">Expandir tudo</button>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="table"></table></div>
+        </article>
+      </section>
+
+      <!-- ---------- PÚBLICO ---------- -->
+      <section class="view" data-view="audience" hidden>
+        <div class="view-tools">
+          <span class="muted" id="bd-note"></span>
+          <span class="seg-label">Mostrar por</span>
+          <div class="seg sm" id="bd-seg">
+            <button data-m="res" aria-pressed="true">Leads</button>
+            <button data-m="cpl" aria-pressed="false">CPL</button>
+            <button data-m="spend" aria-pressed="false">Investimento</button>
+          </div>
+        </div>
+        <div class="grid g-2e">
+          <article class="card"><div class="card-head"><div><h2>Posicionamentos</h2><p>Feed, Stories, Reels…</p></div></div><div class="chart" id="placement-chart"></div></article>
+          <article class="card"><div class="card-head"><div><h2>Idade e gênero</h2><p>Onde estão os leads</p></div></div><div class="chart" id="age-chart"></div></article>
+          <article class="card"><div class="card-head"><div><h2>Regiões</h2><p>Estados com mais resultado</p></div></div><div class="chart" id="region-chart"></div></article>
+          <article class="card"><div class="card-head"><div><h2>Dia da semana</h2><p>Barra azul forte = menor CPL</p></div></div><div class="chart" id="weekday-chart"></div></article>
+        </div>
+      </section>
+
+      <!-- ---------- CONFIGURAÇÕES ---------- -->
+      <section class="view" data-view="settings" hidden>
+        <div class="grid g-2e">
+          <article class="card">
+            <div class="card-head"><div><h2>Fonte de dados</h2><p id="src-desc"></p></div></div>
+            <div class="settings-list">
+              <button class="set-row" id="load-live"><span><b>Recarregar dados sincronizados</b><small>Lê data/insights.json publicado pela automação</small></span><span class="chev">›</span></button>
+              <label class="set-row"><span><b>Importar CSV do Gerenciador</b><small>Ou arraste o arquivo para qualquer lugar da página</small></span><span class="chev">›</span><input type="file" id="csv-input" accept=".csv,text/csv" hidden /></label>
+              <button class="set-row" id="load-demo"><span><b>Ver dados de demonstração</b><small>Útil para apresentar o dashboard</small></span><span class="chev">›</span></button>
+            </div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Preferências</h2><p>Ficam salvas neste navegador</p></div></div>
+            <div class="settings-list">
+              <label class="set-row"><span><b>Comparar com período anterior</b><small>Mostra a variação nos indicadores</small></span><span class="switch"><input type="checkbox" id="compare" checked /><i></i></span></label>
+              <button class="set-row" id="copy-link"><span><b>Copiar link desta visão</b><small>Período, página, filtros e busca vão juntos</small></span><span class="chev">›</span></button>
+              <button class="set-row" id="theme-row"><span><b>Tema claro / escuro</b><small>Alterna a aparência</small></span><span class="chev">›</span></button>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+    <footer class="foot" id="foot"></footer>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="dr-title">
+  <div class="drawer-head">
+    <div style="flex:1;min-width:0"><div class="crumb" id="dr-crumb"></div><h3 id="dr-title"></h3></div>
+    <button class="icon-btn" id="dr-close" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="drawer-body" id="dr-body"></div>
+</aside>
+<div class="toast" id="toast" role="status"></div>
+<div class="dropzone hidden" id="dropzone">Solte o CSV exportado do Gerenciador de Anúncios</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.1/echarts.min.js"></script>
+<script src="assets/demo.js"></script>
+<script src="assets/csv.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

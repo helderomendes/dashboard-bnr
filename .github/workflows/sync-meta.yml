@@ -1,0 +1,143 @@
+name: Sincronizar Meta Ads e publicar dashboard
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      demo:
+        description: Publicar com dados fictícios
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-vercel
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # O deploy --prebuilt lê as configurações do projeto em .vercel/project.json,
+      # que só o "vercel pull" cria. Roda antes de montar .vercel/output.
+      - name: Vincular projeto da Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          : "${VERCEL_TOKEN:?Configure VERCEL_TOKEN no GitHub Actions}"
+          : "${VERCEL_ORG_ID:?Configure VERCEL_ORG_ID no GitHub Actions}"
+          : "${VERCEL_PROJECT_ID:?Configure VERCEL_PROJECT_ID no GitHub Actions}"
+          npx --yes vercel@48 pull --yes --environment=production --token "$VERCEL_TOKEN"
+          test -f .vercel/project.json
+
+      - name: Buscar dados da Meta Marketing API
+        if: ${{ inputs.demo != true }}
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          DAYS: ${{ vars.DAYS || '180' }}
+          META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
+          LEAD_ACTION_TYPES: ${{ vars.LEAD_ACTION_TYPES }}
+          OUT: .vercel/output/functions/dashboard.func/site/data/insights.json
+        run: |
+          mkdir -p "$(dirname "$OUT")"
+          node scripts/fetch-meta.mjs
+
+      - name: Montar o dashboard protegido
+        run: |
+          bundle=.vercel/output/functions/dashboard.func
+          mkdir -p "$bundle/site"
+          cp -r index.html assets "$bundle/site/"
+          cat > .vercel/output/config.json <<'JSON'
+          {"version":3,"routes":[{"src":"^/(.*)$","dest":"/dashboard?asset=$1"}]}
+          JSON
+          cat > "$bundle/.vc-config.json" <<'JSON'
+          {"runtime":"nodejs22.x","handler":"index.cjs","launcherType":"Nodejs"}
+          JSON
+          cat > "$bundle/index.cjs" <<'JS'
+          const { createHash, timingSafeEqual } = require('node:crypto');
+          const { readFile } = require('node:fs/promises');
+          const { extname, join } = require('node:path');
+
+          const types = {
+            '.html': 'text/html; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+            '.js': 'text/javascript; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml',
+            '.ico': 'image/x-icon',
+            '.woff2': 'font/woff2',
+          };
+
+          function digest(value) {
+            return createHash('sha256').update(value).digest();
+          }
+
+          module.exports = async function dashboard(req, res) {
+            res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+
+            const username = process.env.DASHBOARD_USERNAME;
+            const password = process.env.DASHBOARD_PASSWORD;
+            if (!username || !password) {
+              res.statusCode = 503;
+              return res.end('Dashboard indisponível.');
+            }
+
+            const expected = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
+            if (!timingSafeEqual(digest(req.headers.authorization || ''), digest(expected))) {
+              res.statusCode = 401;
+              res.setHeader('WWW-Authenticate', 'Basic realm="Dashboard BNR", charset="UTF-8"');
+              return res.end('Autenticação necessária.');
+            }
+
+            if (req.method !== 'GET' && req.method !== 'HEAD') {
+              res.statusCode = 405;
+              res.setHeader('Allow', 'GET, HEAD');
+              return res.end();
+            }
+
+            const asset = new URL(req.url, 'http://localhost').searchParams.get('asset') || 'index.html';
+            const isAsset = /^assets\/(?:[\w-]+\/)*[\w.-]+$/.test(asset);
+            const contentType = types[extname(asset).toLowerCase()];
+            if ((!isAsset && asset !== 'index.html' && asset !== 'data/insights.json') || !contentType) {
+              res.statusCode = 404;
+              return res.end();
+            }
+
+            try {
+              const bytes = await readFile(join(__dirname, 'site', asset));
+              res.setHeader('Content-Type', contentType);
+              return res.end(req.method === 'HEAD' ? undefined : bytes);
+            } catch (error) {
+              res.statusCode = error.code === 'ENOENT' || error.code === 'EISDIR' ? 404 : 500;
+              return res.end();
+            }
+          };
+          JS
+          node --check "$bundle/index.cjs"
+
+      - name: Publicar na Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          url="$(npx --yes vercel@48 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
+          echo "Dashboard: $url" >> "$GITHUB_STEP_SUMMARY"

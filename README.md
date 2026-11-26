@@ -1,0 +1,154 @@
+# Dashboard Meta Ads · BNR Construtora 01
+
+Dashboard web para entender **de onde vem cada lead**: qual campanha, qual conjunto e qual anúncio, com o **CPL de cada nível**. Os dados vêm direto da API oficial da Meta, sem nenhuma ferramenta paga no meio.
+
+![stack](https://img.shields.io/badge/custo-R%24%200-12925b) ![stack](https://img.shields.io/badge/build-nenhum-14213d)
+
+## O que o dashboard mostra
+
+| Área | Pergunta que responde |
+|---|---|
+| **KPIs com variação** | Investimento, leads, CPL, conversão clique→lead, CTR, CPC, CPM e impressões, comparados com o período anterior de mesma duração |
+| **Evolução** | Leads × CPL, investimento e CTR × CPC por dia, semana ou mês, com a linha do período anterior |
+| **Insights automáticos** | Melhor anúncio, anúncios gastando sem lead, CPL subindo ou caindo por campanha, dependência de um único criativo, melhor posicionamento e melhor dia |
+| **De onde vêm os leads** | Fluxo (Sankey) Campanha → Conjunto → Anúncio. Clique em um nó para filtrar ou abrir o criativo |
+| **Participação por campanha** | Quanto cada campanha leva da verba e quanto entrega em resultados |
+| **Ranking de anúncios** | Criativos com miniatura, ordenados por melhor ou pior CPL, volume, verba ou CTR. Um mínimo de resultados evita eleger um "campeão" com só 1 lead |
+| **Tabela hierárquica** | Campanha › Conjunto › Anúncio com drill-down, ordenação por qualquer coluna e exportação em CSV |
+| **Público e posicionamento** | Feed/Stories/Reels, mapa de calor de idade × gênero e regiões (por resultados, CPL ou investimento) |
+| **Dia da semana e funil** | Melhor dia para anunciar e o funil impressão → clique → lead |
+
+Recursos de uso:
+- Datas com os mesmos atalhos do Gerenciador (hoje, ontem, 7/14/30/90 dias, este mês, mês passado, personalizado).
+- **Leads × Conversas × Todos**: separa leads de formulário/site das conversas iniciadas no WhatsApp/Direct.
+- Busca global (atalho `/`), filtros por campanha, conjunto e status.
+- **Meta de CPL**: os CPLs ficam verdes, amarelos ou vermelhos conforme a meta.
+- **Link compartilhável**: o período, os filtros e a busca vão junto na URL (menu ⋯ › Copiar link).
+- Tema claro/escuro, layout responsivo para celular e atualização automática a cada 30 min com a aba aberta.
+
+---
+
+## Como conectar a conta (grátis, cerca de 15 minutos)
+
+Como funciona: a cada 3 horas, o **GitHub Actions** busca os números na **Meta Marketing API** e publica o dashboard na **Vercel**, protegido por **usuário e senha**. Os três serviços são gratuitos (Vercel no plano Hobby). O token da Meta fica guardado como segredo no GitHub e nunca chega ao navegador. Os dados (`data/insights.json`) também só são entregues depois do login.
+
+```
+Meta Ads ──token só leitura──▶ GitHub Actions (a cada 3 h) ──▶ Vercel (login e senha) ──▶ navegador
+```
+
+### 1. Criar o token da Meta (definitivo, só leitura)
+
+Você precisa ser **administrador do Business** dono da conta de anúncios.
+
+1. **Criar um app** (se ainda não houver): em **developers.facebook.com › Meus apps › Criar app**, escolha **Outro › Empresa**, dê o nome `Dashboard BNR` e vincule ao portfólio da BNR Construtora. Adicione o produto **API de Marketing**. O app pode ficar em modo de desenvolvimento.
+2. **Criar o usuário do sistema**: em **business.facebook.com › Configurações › Usuários › Usuários do sistema › Adicionar**, use o nome `dashboard-bnr` e a função **Funcionário**.
+3. **Atribuir ativos** ao usuário do sistema:
+   - **Contas de anúncios › BNR Construtora 01**: marque só **Ver desempenho**.
+   - **Apps › Dashboard BNR**: marque **Desenvolver app**. Sem isso, o app não aparece na hora de gerar o token.
+4. **Gerar novo token**: escolha o app, coloque a validade **Nunca** e marque só a permissão **`ads_read`**. Copie o token na hora: ele aparece uma única vez.
+5. **Conferir** em **developers.facebook.com/tools/debug/accesstoken**: precisa mostrar *Expira: Nunca*, *Escopos: ads_read* e *Tipo: System User*.
+
+> O token só para de funcionar se for revogado, se o usuário do sistema for excluído ou se o acesso à conta for removido. Nunca cole o token em chat, e-mail ou código: só no secret do GitHub.
+
+| Problema | Solução |
+|---|---|
+| Botão "Gerar novo token" cinza ou o app não aparece | Atribua o **app** ao usuário do sistema (passo 3) |
+| `ads_read` não aparece na lista | Adicione o produto **API de Marketing** no app |
+| Sem o menu "Usuários do sistema" | Você não é administrador desse Business |
+
+### 2. Criar o projeto na Vercel
+
+1. Crie uma conta grátis em **vercel.com** e um projeto vazio chamado `dashboard-bnr`. Não precisa conectar o Git: quem publica é o GitHub Actions.
+2. Em **Project › Settings › Environment Variables**, crie para **Production** (marque como *Sensitive*):
+   - `DASHBOARD_USERNAME`: o usuário de acesso ao dashboard;
+   - `DASHBOARD_PASSWORD`: uma senha forte.
+   Sem essas duas variáveis, o site responde "Dashboard indisponível".
+3. Pegue os IDs:
+   - **Team ID** (começa com `team_`): em **Team Settings › General**;
+   - **Project ID** (começa com `prj_`): em **Project Settings › General**.
+4. Crie um token em **Account Settings › Tokens**, com escopo no time do projeto.
+
+### 3. Configurar o GitHub
+
+No repositório: **Settings › Secrets and variables › Actions › New repository secret**
+
+| Secret | Valor |
+|---|---|
+| `META_ACCESS_TOKEN` | o token do passo 1 |
+| `META_AD_ACCOUNT_ID` | `act_1332542050584163` (BNR Construtora 01) |
+| `VERCEL_TOKEN` | o token da Vercel |
+| `VERCEL_ORG_ID` | o Team ID (`team_…`) |
+| `VERCEL_PROJECT_ID` | o Project ID (`prj_…`) |
+
+Variáveis opcionais (aba *Variables*): `DAYS` (histórico, padrão 180), `META_API_VERSION` (padrão `v23.0`) e `LEAD_ACTION_TYPES` (veja "O que conta como lead").
+
+Confira também se a branch padrão é a `main` (**Settings › General › Default branch**). O GitHub só roda a atualização agendada na branch padrão.
+
+### 4. Publicar
+
+1. Vá em **Actions › Sincronizar Meta Ads e publicar dashboard › Run workflow**.
+2. Para testar antes de ter o token da Meta, marque **"Publicar com dados fictícios"**. Assim o passo da Meta é pulado e o dashboard abre em modo demonstração.
+3. O link aparece no **resumo do job**, na linha "Dashboard: https://…". Ao abrir, o navegador pede o usuário e a senha do passo 2.
+
+Depois disso, o dashboard se atualiza sozinho a cada 3 horas. Para atualizar na hora, use **Run workflow** sem marcar a opção de dados fictícios.
+
+| Erro no job | Causa provável |
+|---|---|
+| `Configure VERCEL_… no GitHub Actions` | Falta um dos secrets da Vercel |
+| `Could not retrieve Project Settings` / erro no passo "Vincular projeto da Vercel" | `VERCEL_ORG_ID` ou `VERCEL_PROJECT_ID` errado, ou o token não tem acesso ao time |
+| `Token inválido ou expirado (erro 190)` | Gere de novo o token da Meta (passo 1) |
+| `Sem permissão na conta (erro 200/10)` | O usuário do sistema não tem a conta de anúncios atribuída |
+
+### Rodar no seu computador
+
+```bash
+cp .env.example .env
+```
+
+```bash
+npm run sync
+```
+
+```bash
+npm run dev
+```
+
+Depois abra `http://localhost:3000`.
+
+---
+
+## Sem integração nenhuma: importar CSV
+
+Para uma análise rápida, sem configurar nada:
+
+1. No Gerenciador de Anúncios, vá até a aba **Anúncios**.
+2. **Detalhamento › Por tempo › Dia** (para ter a evolução diária).
+3. Garanta as colunas *Valor usado, Impressões, Cliques no link, Leads* e, se usar WhatsApp, *Conversas por mensagem iniciadas*.
+4. **Relatórios › Exportar dados da tabela › .csv**.
+5. No dashboard, use **⋯ › Importar CSV** ou arraste o arquivo para a página.
+
+O CSV é lido só no navegador; nada é enviado para servidor nenhum. As quebras de público e posicionamento só aparecem com a sincronização pela API.
+
+---
+
+## Detalhes técnicos
+
+- **O que conta como lead**: a ação `lead` da Meta, que soma formulário instantâneo e lead do pixel no site, sem contar duas vezes. Se a conta usa uma conversão personalizada, defina `LEAD_ACTION_TYPES` (ex.: `offsite_conversion.custom.123456`). **Conversas** = `onsite_conversion.messaging_conversation_started_7d`.
+- **Atribuição**: `use_unified_attribution_setting=true`, então os números batem com o Gerenciador.
+- **Quebras** (posicionamento, idade/gênero, região) vêm no nível de campanha. Por isso respeitam o filtro de campanha, mas não o de conjunto ou anúncio.
+- **Alcance/frequência** não aparecem de propósito: o alcance não pode ser somado entre dias, e mostrar uma soma diária daria um número errado.
+- Os anúncios excluídos continuam no histórico, com o nome tirado dos próprios insights.
+- Stack: HTML + CSS + JS puros e [Apache ECharts](https://echarts.apache.org) via CDN. Não há build e o script de sincronização não tem dependências (Node 20).
+- **Personalização visual**: as cores ficam em `assets/styles.css` (`--accent`, `--brand`, `--chart-*`). Para usar a identidade da BNR, troque esses tokens e o bloco `.logo`.
+
+```
+index.html                 estrutura da página
+assets/styles.css          design system (tokens claro/escuro)
+assets/app.js              filtros, agregações, gráficos, tabela, insights
+assets/csv.js              importador do CSV do Gerenciador
+assets/demo.js             dados de demonstração (quando não há sincronização)
+scripts/fetch-meta.mjs     Meta Marketing API → data/insights.json
+.github/workflows/         sincronização a cada 3 h + publicação na Vercel (com login)
+```
+
+Enquanto não houver `data/insights.json`, o dashboard abre em **modo demonstração**. Também dá para forçar esse modo com `?demo=1`.
