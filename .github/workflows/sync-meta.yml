@@ -27,6 +27,20 @@ jobs:
         with:
           node-version: 22
 
+      # O deploy --prebuilt lê as configurações do projeto em .vercel/project.json,
+      # que só o "vercel pull" cria. Roda antes de montar .vercel/output.
+      - name: Vincular projeto da Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          : "${VERCEL_TOKEN:?Configure VERCEL_TOKEN no GitHub Actions}"
+          : "${VERCEL_ORG_ID:?Configure VERCEL_ORG_ID no GitHub Actions}"
+          : "${VERCEL_PROJECT_ID:?Configure VERCEL_PROJECT_ID no GitHub Actions}"
+          npx --yes vercel@48 pull --yes --environment=production --token "$VERCEL_TOKEN"
+          test -f .vercel/project.json
+
       - name: Buscar dados da Meta Marketing API
         if: ${{ inputs.demo != true }}
         env:
@@ -125,8 +139,5 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          : "${VERCEL_TOKEN:?Configure VERCEL_TOKEN no GitHub Actions}"
-          : "${VERCEL_ORG_ID:?Configure VERCEL_ORG_ID no GitHub Actions}"
-          : "${VERCEL_PROJECT_ID:?Configure VERCEL_PROJECT_ID no GitHub Actions}"
           url="$(npx --yes vercel@48 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
           echo "Dashboard: $url" >> "$GITHUB_STEP_SUMMARY"
