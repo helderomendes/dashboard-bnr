@@ -58,7 +58,7 @@
     compare: store.get('compare', true),
     mode: store.get('mode', 'leads'),
     campaigns: new Set(), adsets: new Set(), status: 'all', q: '',
-    gran: 'day', share: 'res', bd: 'res',
+    gran: 'day', granAuto: true, share: 'res', bd: 'res',
     rankSort: 'cpl', rankLimit: 8,
     minRes: store.get('minRes', 3), goal: store.get('goal', null),
     tableView: 'tree', sort: { key: 'res', dir: -1 }, expanded: new Set(),
@@ -318,7 +318,7 @@
     const items = [
       { k: 'res', l: resLabel(), v: F.int(c.res), ico: ICON.users, hero: true, sub: 'no período' },
       { k: 'cpl', l: cplLabel(), v: moneyParts(c.cpl), ico: ICON.tag, inv: true, sub: 'custo médio por ' + singular() },
-      { k: 'spend', l: 'Investimento', v: moneyParts(c.spend), ico: ICON.wallet, neutral: true, sub: 'valor usado' },
+      { k: 'ctr', l: 'CTR (link)', v: F.pct(c.ctr), ico: ICON.up, sub: 'cliques no link ÷ impressões' },
       { k: 'cvr', l: 'Taxa de conversão', v: F.pct(c.cvr), ico: ICON.target, sub: 'de clique para ' + singular() },
     ];
     $('#kpis').innerHTML = items.map((it) => {
@@ -340,6 +340,7 @@
   function alpha(hex, a) { const h = hex.replace('#', ''); if (h.length !== 6) return hex; return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; }
   function renderTrend() {
     const p = palette();
+    if (state.granAuto) { const n = D.diff(state.since, state.until) + 1; state.gran = n > 120 ? 'month' : n > 21 ? 'week' : 'day'; }
     $('#trend-title').textContent = `${resLabel()} por ${({ day: 'dia', week: 'semana', month: 'mês' })[state.gran]}`;
     $$('#gran-seg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.g === state.gran));
     const keys = buckets(state.since, state.until);
@@ -377,8 +378,8 @@
     if (!vals.some(Boolean)) return emptyChart('spend-chart', 'Sem investimento');
     const maxV = Math.max(...vals); const maxI = vals.indexOf(maxV);
     const o = baseOpt(p);
-    o.grid = { left: 2, right: 2, top: 30, bottom: 2 };
-    o.xAxis = { type: 'category', data: keys.map((k) => D.fmt(k)), show: false, boundaryGap: false };
+    o.grid = { left: 2, right: 2, top: 30, bottom: 22 };
+    o.xAxis = { type: 'category', data: keys.map((k) => D.fmt(k)), boundaryGap: false, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: p.text3, fontSize: 10.5, interval: Math.max(0, Math.ceil(keys.length / 3) - 1), hideOverlap: true, alignMinLabel: 'left', alignMaxLabel: 'right' } };
     o.yAxis = { type: 'value', show: false, min: (v) => v.min * 0.5 };
     o.series = [{
       type: 'line', smooth: 0.5, showSymbol: false, data: vals, name: 'Investimento',
@@ -435,15 +436,15 @@
         const p0 = prevCamp.get(id);
         if (!p0 || !p0.cpl || !m.cpl || m.res < minR || p0.res < minR) continue;
         const ch = (m.cpl - p0.cpl) / p0.cpl;
-        if (ch > 0.25) out.push(['warn', 'up', d.campaigns[id].name, `${cplLabel()} subiu ${Math.round(ch * 100)}% (${F.money(p0.cpl)} → ${F.money(m.cpl)})`]);
-        else if (ch < -0.2) out.push(['good', 'down', d.campaigns[id].name, `${cplLabel()} caiu ${Math.round(-ch * 100)}% (${F.money(p0.cpl)} → ${F.money(m.cpl)})`]);
+        if (ch > 0.25) out.push(['warn', 'up', d.campaigns[id].name, `${cplLabel()} subiu ${Math.round(ch * 100)}% → ${F.money(m.cpl)}`]);
+        else if (ch < -0.2) out.push(['good', 'down', d.campaigns[id].name, `${cplLabel()} caiu ${Math.round(-ch * 100)}% → ${F.money(m.cpl)}`]);
       }
     }
     if (cur.res > 5) {
       const camps = [...byCamp.entries()].filter(([, m]) => m.spend > 0).sort((a, b) => b[1].res - a[1].res);
       if (camps.length > 1) {
         const [cid, cm] = camps[0];
-        out.push(['info', 'layers', d.campaigns[cid].name, `Principal origem: ${Math.round((cm.res / cur.res) * 100)}% dos ${resLabel().toLowerCase()} com ${Math.round((cm.spend / cur.spend) * 100)}% da verba`]);
+        out.push(['info', 'layers', d.campaigns[cid].name, `${Math.round((cm.res / cur.res) * 100)}% dos ${resLabel().toLowerCase()} com ${Math.round((cm.spend / cur.spend) * 100)}% da verba`]);
       }
       const top = ads.slice().sort((a, b) => b.res - a.res)[0];
       if (top && top.res / cur.res > 0.4 && ads.length > 3) out.push(['warn', 'alert', d.ads[top.id].name, `Concentra ${Math.round((top.res / cur.res) * 100)}% dos ${resLabel().toLowerCase()} — teste variações`, top.id]);
@@ -462,8 +463,8 @@
       return `<${tag} class="row-item" ${adId ? `data-ad="${esc(adId)}"` : ''} title="${esc(title + ' — ' + text)}"><span class="row-ico t-${t}">${ICON[ico]}</span><span style="min-width:0"><b>${esc(title)}</b><small class="t-${t}">${esc(text)}</small></span><span class="chev">${adId ? '›' : ''}</span></${tag}>`;
     };
     const rank = { bad: 0, warn: 1, good: 0, info: 1 };
-    const alerts = out.filter((x) => x[0] === 'bad' || x[0] === 'warn').sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 3);
-    const opps = out.filter((x) => x[0] === 'good' || x[0] === 'info').sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 3);
+    const alerts = out.filter((x) => x[0] === 'bad' || x[0] === 'warn').sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 2);
+    const opps = out.filter((x) => x[0] === 'good' || x[0] === 'info').sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 2);
     $('#alerts').innerHTML = !cur.spend ? '<div class="row-empty">Sem investimento no período.</div>' : alerts.length ? alerts.map(row).join('') : '<div class="row-empty">Nada fora do normal neste período.</div>';
     $('#opps').innerHTML = opps.length ? opps.map(row).join('') : '<div class="row-empty">Ainda sem volume para apontar oportunidades.</div>';
   }
@@ -532,7 +533,7 @@
       emphasis: { focus: 'adjacency' }, nodeAlign: 'left', layoutIterations: 64,
       data: [...nodes.values()], links: [...links.entries()].map(([k, v]) => { const [s, t] = k.split('>'); return { source: s, target: t, value: v }; }),
       lineStyle: { color: 'gradient', opacity: 0.28, curveness: 0.5 },
-      label: { color: p.text, fontSize: 11.5, formatter: (x) => trunc(label[x.name], narrow ? 18 : 30) + '  ' + F.int(meta[x.name].res) },
+      label: { color: p.text, fontSize: 11.5, formatter: (x) => trunc(label[x.name], narrow ? 18 : (nodes.get(x.name).depth === 2 ? 30 : 40)) + '  ' + F.int(meta[x.name].res) },
     }];
     chart('sankey-chart').setOption(o, true);
     chart('sankey-chart').off('click');
@@ -554,9 +555,12 @@
     const f = state.share;
     const o = baseOpt(p);
     o.tooltip = Object.assign(o.tooltip, { trigger: 'item', formatter: (x) => { const m = byCamp.get(x.data.id); return `<b>${esc(x.name)}</b><br>Investimento: ${F.money(m.spend)} (${Math.round(m.spend / cur.spend * 100)}%)<br>${resLabel()}: ${F.int(m.res)} (${cur.res ? Math.round(m.res / cur.res * 100) : 0}%)<br>${cplLabel()}: ${F.money(m.cpl)}`; } });
-    o.legend = { type: 'scroll', orient: 'horizontal', bottom: 0, left: 0, right: 0, textStyle: { color: p.text2, fontSize: 11.5 }, icon: 'circle', itemWidth: 8, formatter: (n) => (n.length > 34 ? n.slice(0, 33) + '…' : n) };
+    const tot = f === 'res' ? cur.res : cur.spend; const vert = document.getElementById('share-chart').clientWidth > 460;
+    const byName = new Map(rows.map(([id, m]) => [state.data.campaigns[id].name, m]));
+    o.legend = { type: 'scroll', orient: vert ? 'vertical' : 'horizontal', right: vert ? 0 : undefined, left: vert ? undefined : 0, top: vert ? 'middle' : undefined, bottom: vert ? undefined : 0, width: vert ? '46%' : undefined, itemGap: 14, textStyle: { color: p.text2, fontSize: 12, rich: { pct: { color: p.text, fontWeight: 600, fontSize: 12 } } }, icon: 'circle', itemWidth: 9,
+      formatter: (n) => { const m = byName.get(n); const v = m ? (f === 'res' ? m.res : m.spend) : 0; const nm = n.length > 26 ? n.slice(0, 25) + '…' : n; return `${nm}  {pct|${tot ? Math.round((v / tot) * 100) : 0}%}`; } };
     o.series = [{
-      type: 'pie', radius: ['48%', '74%'], center: ['50%', '44%'], padAngle: 2, itemStyle: { borderRadius: 6, borderColor: p.surface, borderWidth: 2 },
+      type: 'pie', radius: ['46%', '70%'], center: [document.getElementById('share-chart').clientWidth > 460 ? '27%' : '50%', document.getElementById('share-chart').clientWidth > 460 ? '50%' : '44%'], padAngle: 2, itemStyle: { borderRadius: 6, borderColor: p.surface, borderWidth: 2 },
       label: { show: true, position: 'center', formatter: () => `{v|${f === 'res' ? F.int(cur.res) : F.compact(cur.spend)}}\n{l|${f === 'res' ? resLabel().toLowerCase() : 'investidos'}}`, rich: { v: { fontSize: 24, fontWeight: 700, color: p.text, lineHeight: 30 }, l: { fontSize: 12, color: p.text3 } } },
       emphasis: { scale: true, scaleSize: 6 }, labelLine: { show: false },
       data: rows.map(([id, m], i) => ({ id, name: d.campaigns[id].name, value: f === 'res' ? m.res : +m.spend.toFixed(2), itemStyle: { color: p.c[i % p.c.length] } })),
@@ -661,7 +665,8 @@
     const v = state.tableView;
     const arrow = (k) => `<span class="arrow">${state.sort.key === k ? (state.sort.dir > 0 ? '▲' : '▼') : '↕'}</span>`;
     const nameHead = { tree: 'Campanha › Conjunto › Anúncio', campaign: 'Campanha', adset: 'Conjunto de anúncios', ad: 'Anúncio' }[v];
-    let html = `<thead><tr><th data-k="name" class="${state.sort.key === 'name' ? 'sorted' : ''}">${nameHead} ${arrow('name')}</th>${cols.map((c) => `<th data-k="${c.k}" class="${state.sort.key === c.k ? 'sorted' : ''}">${esc(c.t)} ${arrow(c.k)}</th>`).join('')}</tr></thead><tbody>`;
+    const ariaSort = (k) => (state.sort.key === k ? ` aria-sort="${state.sort.dir > 0 ? 'ascending' : 'descending'}"` : '');
+    let html = `<thead><tr><th data-k="name" tabindex="0" class="${state.sort.key === 'name' ? 'sorted' : ''}"${ariaSort('name')}>${nameHead} ${arrow('name')}</th>${cols.map((c) => `<th data-k="${c.k}" tabindex="0" class="${state.sort.key === c.k ? 'sorted' : ''}"${ariaSort(c.k)}>${esc(c.t)} ${arrow(c.k)}</th>`).join('')}</tr></thead><tbody>`;
     const cells = (m) => cols.map((c) => `<td class="num">${c.raw ? c.f(m[c.k]) : c.f(m[c.k])}</td>`).join('');
     const row = (x, opts) => {
       const o = opts || {};
@@ -785,7 +790,7 @@
     const max = c.imp || 1;
     $('#funnel').innerHTML = steps.map(([l, v, rate, rl], i) => {
       const w = i === 0 ? 100 : Math.max(8, Math.pow(v / max, 0.28) * 100);
-      return `<div class="f-step"><div class="lbl">${esc(l)}</div><div class="f-bar"><i style="width:${w}%"></i><b class="num">${F.int(v)}</b></div><div class="rate">${rate == null ? '' : `<strong class="num">${F.pct(rate)}</strong>${rl}`}</div></div>`;
+      return `<div class="f-step"><div class="lbl">${esc(l)}</div><div class="f-bar"><i style="width:${w}%"></i><b class="num${w < 22 ? ' out' : ''}" ${w < 22 ? `style="left:calc(${w}% + 10px)"` : ''}>${F.int(v)}</b></div><div class="rate">${rate == null ? '' : `<strong class="num">${F.pct(rate)}</strong>${rl}`}</div></div>`;
     }).join('') + `<div class="f-cost"><div><span>CPM</span><strong class="num">${F.money(c.cpm)}</strong></div><div><span>CPC (link)</span><strong class="num">${F.money(c.cpc)}</strong></div><div><span>${cplLabel()}</span><strong class="num">${F.money(c.cpl)}</strong></div></div>`;
   }
 
@@ -814,7 +819,9 @@
       <div><div class="sub-title">Evolução diária</div><div id="dr-chart" style="height:220px"></div></div>
       ${a.title || a.body ? `<div><div class="sub-title">Texto do anúncio</div><div class="ad-copy">${a.title ? `<b>${esc(a.title)}</b>\n` : ''}${esc(a.body || '')}</div></div>` : ''}
       <div class="muted" style="font-size:12px">ID do anúncio: ${esc(id)}</div>`;
+    if (!$('#drawer').classList.contains('open')) lastFocus = document.activeElement;
     $('#drawer').classList.add('open'); $('#scrim').classList.add('open'); $('#drawer').setAttribute('aria-hidden', 'false');
+    $('.app').inert = true; setTimeout(() => $('#dr-close').focus(), 50);
     requestAnimationFrame(() => {
       const p = palette(); const dk = [];
       for (let k = state.since; k <= state.until; k = D.add(k, 1)) dk.push(k);
@@ -833,7 +840,11 @@
       charts['dr-chart'] = c;
     });
   }
+  let lastFocus = null;
   function closeDrawer() {
+    if (!$('#drawer').classList.contains('open')) return;
+    $('.app').inert = false;
+    if (lastFocus && lastFocus.focus) lastFocus.focus(); lastFocus = null;
     $('#drawer').classList.remove('open'); $('#scrim').classList.remove('open'); $('#drawer').setAttribute('aria-hidden', 'true');
     if (charts['dr-chart']) { charts['dr-chart'].dispose(); delete charts['dr-chart']; }
   }
@@ -894,7 +905,7 @@
   $('#mode-seg').addEventListener('click', (e) => { const m = e.target.closest('button'); if (!m) return; state.mode = m.dataset.mode; store.set('mode', state.mode); render(); });
   $('#status-seg').addEventListener('click', (e) => { const m = e.target.closest('button'); if (!m) return; state.status = m.dataset.status; render(); });
   const segBind = (sel, key, attr, fn) => $(sel).addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state[key] = b.dataset[attr]; $$(sel + ' button').forEach((x) => x.setAttribute('aria-pressed', x === b)); (fn || render)(); });
-  segBind('#gran-seg', 'gran', 'g', renderTrend);
+  segBind('#gran-seg', 'gran', 'g', () => { state.granAuto = false; renderTrend(); });
   segBind('#share-seg', 'share', 's', renderShare);
   segBind('#bd-seg', 'bd', 'm', renderBreakdowns);
   segBind('#table-seg', 'tableView', 'v', renderTable);
@@ -919,7 +930,14 @@
   $('#top-sort').addEventListener('change', (e) => { state.topSort = e.target.value; renderTopAds(); });
   $('#theme-row').addEventListener('click', () => $('#theme-btn').click());
   window.addEventListener('hashchange', () => { const pg = pageFromHash(); if (pg !== state.page) { state.page = pg; closePops(); render(); window.scrollTo(0, 0); } });
-  document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.list-row[data-ad]')) { e.preventDefault(); openAd(e.target.dataset.ad); } });
+  document.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.list-row[data-ad], th[data-k]')) { e.preventDefault(); e.target.click(); }
+    if (e.key === 'Tab' && $('#drawer').classList.contains('open')) {
+      const f = $$('#drawer a[href], #drawer button').filter((x) => x.offsetParent); if (!f.length) return;
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+    }
+  });
   $('#rank-more').addEventListener('click', () => { state.rankLimit += 8; renderRanking(); });
   document.addEventListener('click', (e) => { const t = e.target.closest('[data-ad]'); if (t && !e.target.closest('[data-exp]')) openAd(t.dataset.ad); });
   $('#scrim').addEventListener('click', closeDrawer);

@@ -87,8 +87,8 @@
         <div class="page-actions">
           <div class="pop-wrap" id="ms-campaigns"></div>
           <div class="pop-wrap" id="ms-adsets"></div>
-          <button class="btn primary" id="export-csv">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Exportar
+          <button class="btn primary" id="export-csv" aria-label="Exportar anúncios em CSV">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span class="btn-txt">Exportar</span>
           </button>
         </div>
       </div>
@@ -221,6 +221,7 @@
       <section class="view" data-view="audience" hidden>
         <div class="view-tools">
           <span class="muted" id="bd-note"></span>
+          <span class="seg-label">Mostrar por</span>
           <div class="seg sm" id="bd-seg">
             <button data-m="res" aria-pressed="true">Leads</button>
             <button data-m="cpl" aria-pressed="false">CPL</button>
@@ -231,7 +232,7 @@
           <article class="card"><div class="card-head"><div><h2>Posicionamentos</h2><p>Feed, Stories, Reels…</p></div></div><div class="chart" id="placement-chart"></div></article>
           <article class="card"><div class="card-head"><div><h2>Idade e gênero</h2><p>Onde estão os leads</p></div></div><div class="chart" id="age-chart"></div></article>
           <article class="card"><div class="card-head"><div><h2>Regiões</h2><p>Estados com mais resultado</p></div></div><div class="chart" id="region-chart"></div></article>
-          <article class="card"><div class="card-head"><div><h2>Dia da semana</h2><p>Leads e CPL por dia</p></div></div><div class="chart" id="weekday-chart"></div></article>
+          <article class="card"><div class="card-head"><div><h2>Dia da semana</h2><p>Barra azul forte = menor CPL</p></div></div><div class="chart" id="weekday-chart"></div></article>
         </div>
       </section>
 
@@ -262,7 +263,7 @@
 </div>
 
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-hidden="true" aria-label="Detalhes do anúncio">
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="dr-title">
   <div class="drawer-head">
     <div style="flex:1;min-width:0"><div class="crumb" id="dr-crumb"></div><h3 id="dr-title"></h3></div>
     <button class="icon-btn" id="dr-close" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
