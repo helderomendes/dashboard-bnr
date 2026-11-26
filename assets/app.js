@@ -53,12 +53,12 @@
     ['last_90', 'Últimos 90 dias'], ['max', 'Todo o período'], ['custom', 'Personalizado'],
   ];
   const state = {
-    data: null,
+    data: null, page: 'overview', topSort: 'cpl',
     preset: 'last_30', since: null, until: null,
     compare: store.get('compare', true),
     mode: store.get('mode', 'leads'),
     campaigns: new Set(), adsets: new Set(), status: 'all', q: '',
-    trend: 'res', gran: 'day', share: 'res', bd: 'res',
+    gran: 'day', share: 'res', bd: 'res',
     rankSort: 'cpl', rankLimit: 8,
     minRes: store.get('minRes', 3), goal: store.get('goal', null),
     tableView: 'tree', sort: { key: 'res', dir: -1 }, expanded: new Set(),
@@ -179,13 +179,14 @@
   function chart(id) {
     const el = document.getElementById(id);
     if (!charts[id] || charts[id].isDisposed()) charts[id] = echarts.init(el, null, { renderer: 'canvas' });
+    else charts[id].resize();
     return charts[id];
   }
   window.addEventListener('resize', () => Object.values(charts).forEach((c) => c.resize()));
   function palette() {
     return {
       c: [1, 2, 3, 4, 5, 6].map((i) => css('--chart-' + i)),
-      text: css('--text'), text2: css('--text-2'), text3: css('--text-3'), grid: css('--chart-grid'),
+      text: css('--text'), text2: css('--text-2'), text3: css('--text-3'), grid: css('--chart-grid'), soft: css('--chart-soft'),
       surface: css('--surface'), border: css('--border'), accent: css('--accent'), good: css('--good'), bad: css('--bad'),
     };
   }
@@ -210,6 +211,18 @@
     c.setOption({ title: { text: msg || 'Sem dados no período', left: 'center', top: 'middle', textStyle: { color: css('--text-3'), fontSize: 13, fontWeight: 500 } } });
   }
 
+  // ------------------------------------------------------------------ pages
+  const PAGES = {
+    overview: { slug: 'visao-geral', title: 'Visão geral', sub: () => `Como está a captação de ${resLabel().toLowerCase()} no período` },
+    origin: { slug: 'origem', title: 'Origem dos leads', sub: () => 'De qual campanha, conjunto e anúncio vem cada resultado' },
+    ads: { slug: 'anuncios', title: 'Anúncios', sub: () => 'Quais criativos trazem leads mais baratos' },
+    campaigns: { slug: 'campanhas', title: 'Campanhas', sub: () => 'Todos os números por campanha, conjunto e anúncio' },
+    audience: { slug: 'publico', title: 'Público', sub: () => 'Posicionamento, idade, gênero, região e dia da semana' },
+    settings: { slug: 'configuracoes', title: 'Configurações', sub: () => 'Fonte de dados e preferências' },
+  };
+  const pageBySlug = (slug) => Object.keys(PAGES).find((k) => PAGES[k].slug === slug) || 'overview';
+  const pageFromHash = () => pageBySlug(location.hash.replace(/^#\/?/, '').split('?')[0]);
+
   // ------------------------------------------------------------------ render
   let allowed = new Set();
   let cur = null, prev = null;
@@ -219,30 +232,41 @@
     cur = total(state.since, state.until, allowed);
     const [ps, pu] = prevRange();
     prev = state.compare ? total(ps, pu, allowed) : null;
-    renderHeader(); renderChips(); renderKPIs(); renderTrend(); renderInsights();
-    renderSankey(); renderShare(); renderRanking(); renderTable();
-    renderBreakdowns(); renderWeekday(); renderFunnel();
+    renderShell(); renderChips();
+    const pg = state.page;
+    if (pg === 'overview') { renderKPIs(); renderTrend(); renderSpend(); renderInsights(); renderTopAds(); }
+    if (pg === 'origin') { renderSankey(); renderShare(); renderFunnel(); }
+    if (pg === 'ads') renderRanking();
+    if (pg === 'campaigns') renderTable();
+    if (pg === 'audience') { renderBreakdowns(); renderWeekday(); }
+    requestAnimationFrame(() => Object.values(charts).forEach((c) => { if (!c.isDisposed() && c.getDom().offsetParent) c.resize(); }));
     writeHash();
   }
 
-  function renderHeader() {
-    const d = state.data;
-    const lbl = state.preset === 'custom' ? `${D.fmt(state.since)} – ${D.fmt(state.until, { year: 'numeric' })}` : PRESETS.find((p) => p[0] === state.preset)[1];
-    $('#date-label').textContent = lbl;
+  function renderShell() {
+    const d = state.data; const pg = PAGES[state.page];
+    $$('.view').forEach((v) => (v.hidden = v.dataset.view !== state.page));
+    $$('#nav a').forEach((a) => { const on = a.dataset.page === state.page; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+    $('#page-title').textContent = pg.title;
+    $('#page-sub').textContent = pg.sub();
+    $('.page-actions').classList.toggle('hidden', state.page === 'settings');
+    document.title = `${pg.title} · BNR Meta Ads`;
+    $('#date-label').textContent = state.preset === 'custom' ? `${D.fmt(state.since)} – ${D.fmt(state.until, { year: 'numeric' })}` : PRESETS.find((x) => x[0] === state.preset)[1];
     const gen = new Date(d.generatedAt);
     const ago = Math.round((Date.now() - gen) / 60000);
-    const agoTxt = ago < 1 ? 'agora' : ago < 60 ? `há ${ago} min` : ago < 1440 ? `há ${Math.round(ago / 60)} h` : gen.toLocaleDateString('pt-BR');
-    const src = { demo: 'Modo demonstração', csv: 'CSV importado', live: 'Atualizado ' + agoTxt }[d.source] || '';
-    $('#account-line').innerHTML = `<span class="dot ${d.source !== 'live' ? 'demo' : ''}"></span>${esc(d.account.name)} · ${src} · ${D.fmt(state.since)} – ${D.fmt(state.until, { year: 'numeric' })}`;
+    const agoTxt = ago < 1 ? 'agora' : ago < 60 ? `há ${ago} min` : ago < 1440 ? `há ${Math.round(ago / 60)} h` : 'em ' + gen.toLocaleDateString('pt-BR');
+    const live = d.source === 'live';
+    $('#account-name').textContent = d.account.name;
+    $('#account-sub').textContent = live ? 'Atualizado ' + agoTxt : d.source === 'csv' ? 'CSV importado' : 'Modo demonstração';
+    $('.avatar').textContent = String(d.account.name || 'B').trim().charAt(0).toUpperCase();
+    $('#side-status').innerHTML = live
+      ? `<b><span class="pulse"></span>Conectado à Meta</b>Atualizado ${agoTxt}. Sincroniza a cada 3 h.`
+      : `<b><span class="pulse demo"></span>${d.source === 'csv' ? 'CSV importado' : 'Modo demonstração'}</b>${d.source === 'csv' ? esc(d.fileName || '') : 'Números fictícios até a conta ser conectada.'}<br><a href="#/configuracoes">Conectar dados</a>`;
+    $('#src-desc').textContent = live ? `Conectado à conta ${d.account.id}. Última atualização ${agoTxt}.` : d.source === 'csv' ? `Usando o arquivo ${d.fileName || 'CSV'}.${d.warning ? ' ' + d.warning : ''}` : 'Mostrando dados de demonstração. Siga o README para conectar a conta (grátis).';
     $$('#mode-seg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === state.mode));
     $$('#status-seg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.status === state.status));
     $('#compare').checked = state.compare;
-    let banner = '';
-    if (d.source === 'demo') banner = `<div class="banner"><span>⚠️</span><span><strong>Dados de demonstração.</strong> Conecte a conta <b>BNR Construtora 01</b> seguindo o README (grátis, ~10 min) ou importe um CSV do Gerenciador de Anúncios.</span><label class="btn">Importar CSV<input type="file" accept=".csv" hidden data-csv></label></div>`;
-    else if (d.warning) banner = `<div class="banner"><span>ℹ️</span><span>${esc(d.warning)}</span></div>`;
-    $('#banner').innerHTML = banner;
-    const inp = $('#banner [data-csv]'); if (inp) inp.addEventListener('change', onCsvInput);
-    $('#foot-left').textContent = `${d.account.name}${d.account.id ? ' · ' + d.account.id : ''} · ${Object.keys(d.campaigns).length} campanhas · ${Object.keys(d.ads).length} anúncios`;
+    $('#foot').innerHTML = `<span>${esc(d.account.name)}${d.account.id ? ' · ' + esc(d.account.id) : ''} · ${Object.keys(d.campaigns).length} campanhas · ${Object.keys(d.ads).length} anúncios</span><span>Dados da Meta Marketing API · mesma atribuição do Gerenciador</span>`;
   }
 
   function renderChips() {
@@ -250,112 +274,122 @@
     for (const id of state.campaigns) chips.push(['c', id, 'Campanha: ' + d.campaigns[id].name]);
     for (const id of state.adsets) chips.push(['s', id, 'Conjunto: ' + d.adsets[id].name]);
     if (state.q) chips.push(['q', '', 'Busca: “' + state.q + '”']);
+    if (state.status !== 'all') chips.push(['st', '', state.status === 'active' ? 'Só ativos' : 'Só pausados']);
     $('#chips').innerHTML = chips.map(([t, id, l]) => `<span class="chip" title="${esc(l)}"><span>${esc(l)}</span><button data-t="${t}" data-id="${esc(id)}" aria-label="Remover filtro">✕</button></span>`).join('') +
       (chips.length > 1 ? '<button class="linkbtn" id="clear-all">Limpar filtros</button>' : '');
     msCampaigns.refresh(); msAdsets.refresh();
   }
 
+  // ---- ícones
+  const sv = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const ICON = {
+    users: sv('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.6a3.2 3.2 0 0 1 0 6.2M21 20c0-2.7-1.6-5-4-5.8"/>'),
+    wallet: sv('<rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16 15h2"/>'),
+    tag: sv('<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.4"/>'),
+    target: sv('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/>'),
+    star: sv('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
+    fire: sv('<path d="M12 22c4 0 7-2.7 7-6.8 0-4.4-4-7-5-11.2-2.4 2-3.6 4.4-3.4 7.1C9.4 10.3 8.6 9 8.4 7.4 6.3 9.4 5 12 5 15.2 5 19.3 8 22 12 22z"/>'),
+    up: sv('<path d="M7 17 17 7M8 7h9v9"/>'),
+    down: sv('<path d="M7 7l10 10M17 8v9H8"/>'),
+    alert: sv('<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>'),
+    pin: sv('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
+    phone: sv('<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/>'),
+    cal: sv('<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
+    layers: sv('<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/>'),
+  };
+
   // ---- KPIs
-  function delta(curV, prevV, inverse) {
-    if (!state.compare || prevV == null || curV == null || !isFinite(prevV)) return '<span class="muted">sem comparação</span>';
-    if (prevV === 0) return curV === 0 ? '<span class="delta flat">0%</span>' : '<span class="delta flat">novo</span>';
+  function delta(curV, prevV, inverse, neutral) {
+    if (!state.compare || prevV == null || curV == null || !isFinite(prevV)) return '';
+    if (prevV === 0) return curV === 0 ? '' : '<span class="delta flat">novo</span>';
     const ch = (curV - prevV) / prevV;
     if (Math.abs(ch) < 0.005) return '<span class="delta flat">0%</span>';
-    const good = inverse ? ch < 0 : ch > 0;
-    return `<span class="delta ${good ? 'up' : 'down'}">${ch > 0 ? '▲' : '▼'} ${nf.int.format(Math.abs(ch * 100))}%</span>`;
+    const cls = neutral ? 'info' : (inverse ? ch < 0 : ch > 0) ? 'up' : 'down';
+    return `<span class="delta ${cls}">${ch > 0 ? '↑' : '↓'} ${nf.int.format(Math.abs(ch * 100))}%</span>`;
   }
-  function sparkSeries(metric) {
-    const n = D.diff(state.since, state.until) + 1;
-    const step = n > 45 ? 7 : 1;
-    const m = aggregate(state.since, state.until, allowed, (r, a) => {
-      const k = D.diff(state.since, r[state.data._c.d]); return Math.floor(k / step);
-    });
-    const pts = [];
-    for (let i = 0; i <= Math.floor((n - 1) / step); i++) { const x = m.get(i); pts.push(x ? x[metric] : null); }
-    return pts;
+  function moneyParts(v) {
+    if (v == null || !isFinite(v)) return '—';
+    const t = moneyFmt.format(v); const i = t.lastIndexOf(',');
+    return i < 0 ? esc(t) : `${esc(t.slice(0, i))}<span class="cents">${esc(t.slice(i))}</span>`;
   }
-  function spark(values, color) {
-    const v = values.map((x) => (x == null ? 0 : x));
-    if (v.length < 2) return '';
-    const max = Math.max(...v), min = Math.min(...v); const rg = max - min || 1;
-    const pts = v.map((x, i) => `${(i / (v.length - 1)) * 84},${28 - ((x - min) / rg) * 26}`).join(' ');
-    return `<svg class="spark" viewBox="0 0 84 30" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
-  }
+  const singular = () => resLabel().toLowerCase().replace(/s$/, '');
   function renderKPIs() {
-    const p = palette(); const c = cur, pr = prev || {};
+    const c = cur, pr = prev || {};
     const items = [
-      { k: 'spend', l: 'Investimento', f: F.money, hero: false, tip: 'Valor usado no período' },
-      { k: 'res', l: resLabel(), f: F.int, hero: true, tip: state.mode === 'leads' ? 'Leads de formulário instantâneo + leads no site (pixel)' : state.mode === 'msgs' ? 'Conversas por mensagem iniciadas (WhatsApp, Messenger, Direct)' : 'Leads + conversas iniciadas' },
-      { k: 'cpl', l: cplLabel(), f: F.money, inv: true, hero: true, tip: 'Investimento ÷ resultados' },
-      { k: 'cvr', l: 'Conversão clique → lead', f: F.pct, tip: 'Resultados ÷ cliques no link' },
-      { k: 'ctr', l: 'CTR (link)', f: F.pct, tip: 'Cliques no link ÷ impressões' },
-      { k: 'cpc', l: 'CPC (link)', f: F.money, inv: true, tip: 'Investimento ÷ cliques no link' },
-      { k: 'cpm', l: 'CPM', f: F.money, inv: true, tip: 'Custo por mil impressões' },
-      { k: 'imp', l: 'Impressões', f: F.compact, tip: 'Total de impressões', sub: (x) => F.int(x.lclk) + ' cliques no link' },
+      { k: 'res', l: resLabel(), v: F.int(c.res), ico: ICON.users, hero: true, sub: 'no período' },
+      { k: 'cpl', l: cplLabel(), v: moneyParts(c.cpl), ico: ICON.tag, inv: true, sub: 'custo médio por ' + singular() },
+      { k: 'spend', l: 'Investimento', v: moneyParts(c.spend), ico: ICON.wallet, neutral: true, sub: 'valor usado' },
+      { k: 'cvr', l: 'Taxa de conversão', v: F.pct(c.cvr), ico: ICON.target, sub: 'de clique para ' + singular() },
     ];
     $('#kpis').innerHTML = items.map((it) => {
-      const sp = ['spend', 'res', 'cpl', 'imp', 'ctr'].includes(it.k) ? spark(sparkSeries(it.k), it.k === 'cpl' ? p.c[1] : p.c[0]) : '';
-      const prevTxt = state.compare && pr[it.k] != null ? `<span title="Período anterior">ant. ${it.f(pr[it.k])}</span>` : (it.sub ? `<span>${it.sub(c)}</span>` : '');
-      return `<div class="card kpi ${it.hero ? 'hero' : ''}">
-        <div class="kpi-label">${esc(it.l)} <span class="info-tip" title="${esc(it.tip)}">?</span></div>
-        <div class="kpi-value num">${it.f(c[it.k])}</div>
-        <div class="kpi-foot">${delta(c[it.k], pr[it.k], it.inv)} ${prevTxt}</div>${sp}</div>`;
+      const dl = delta(c[it.k], pr[it.k], it.inv, it.neutral);
+      return `<div class="kpi ${it.hero ? 'hero' : ''}">
+        <div class="kpi-top"><span class="kpi-label">${esc(it.l)}</span><span class="kpi-ico">${it.ico}</span></div>
+        <div class="kpi-value num">${it.v}</div>
+        <div class="kpi-foot">${dl}<span>${dl ? 'vs. período anterior' : esc(it.sub)}</span></div></div>`;
     }).join('');
   }
 
-  // ---- Trend
+  // ---- Leads por dia (barras arredondadas)
   function bucketKey(day) { return state.gran === 'week' ? D.weekStart(day) : state.gran === 'month' ? D.monthStart(day) : day; }
   function buckets(since, until) {
     const out = []; let d = since; const seen = new Set();
     while (d <= until) { const k = bucketKey(d); if (!seen.has(k)) { seen.add(k); out.push(k); } d = D.add(d, 1); }
     return out;
   }
+  function alpha(hex, a) { const h = hex.replace('#', ''); if (h.length !== 6) return hex; return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; }
   function renderTrend() {
     const p = palette();
+    $('#trend-title').textContent = `${resLabel()} por ${({ day: 'dia', week: 'semana', month: 'mês' })[state.gran]}`;
+    $$('#gran-seg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.g === state.gran));
     const keys = buckets(state.since, state.until);
     const m = aggregate(state.since, state.until, allowed, (r) => bucketKey(r[state.data._c.d]));
-    const get = (k, f) => { const x = m.get(k); return x ? x[f] : 0; };
-    const getN = (k, f) => { const x = m.get(k); return x && x[f] != null ? +x[f].toFixed(4) : null; };
-    let prevSeries = null;
-    if (state.compare) {
-      const [ps, pu] = prevRange();
-      const pk = buckets(ps, pu);
-      const pm = aggregate(ps, pu, allowed, (r) => bucketKey(r[state.data._c.d]));
-      const f = state.trend === 'res' ? 'res' : state.trend === 'spend' ? 'spend' : 'ctr';
-      prevSeries = keys.map((_, i) => { const x = pm.get(pk[i]); return x && x[f] != null ? +x[f].toFixed(4) : null; });
-    }
-    const labels = keys.map((k) => state.gran === 'month' ? D.fmt(k, { day: undefined, month: 'short', year: '2-digit' }) : D.fmt(k));
-    const o = baseOpt(p); const ax = axisCommon(p);
-    o.legend = { top: 0, right: 0, textStyle: { color: p.text2, fontSize: 12 }, icon: 'roundRect', itemWidth: 12, itemHeight: 8 };
-    o.xAxis = Object.assign({ type: 'category', data: labels, boundaryGap: true }, ax, { splitLine: { show: false } });
-    const yL = (fmt) => Object.assign({ type: 'value', axisLabel: { color: p.text3, fontSize: 11, formatter: fmt } }, { splitLine: ax.splitLine });
-    const yR = (fmt) => ({ type: 'value', axisLabel: { color: p.text3, fontSize: 11, formatter: fmt }, splitLine: { show: false } });
-    const bar = (name, data, color) => ({ name, type: 'bar', data, itemStyle: { color, borderRadius: [4, 4, 0, 0] }, barMaxWidth: 26 });
-    const line = (name, data, color, yi, dashed) => ({ name, type: 'line', yAxisIndex: yi || 0, data, smooth: 0.3, symbol: 'circle', symbolSize: 5, showSymbol: keys.length < 40, connectNulls: true, lineStyle: { width: 2.2, color, type: dashed ? 'dashed' : 'solid' }, itemStyle: { color } });
-    const prevLine = (data, yi) => Object.assign(line('Período anterior', data, p.text3, yi, true), { lineStyle: { width: 1.5, type: 'dashed', color: p.text3 }, symbol: 'none' });
-    if (state.trend === 'res') {
-      $('#trend-sub').textContent = `${resLabel()} e ${cplLabel().toLowerCase()} por ${({ day: 'dia', week: 'semana', month: 'mês' })[state.gran]}`;
-      o.yAxis = [yL((v) => F.compact(v)), yR((v) => F.money(v))];
-      o.series = [bar(resLabel(), keys.map((k) => get(k, 'res')), p.c[0]), line(cplLabel(), keys.map((k) => getN(k, 'cpl')), p.c[1], 1)];
-      if (prevSeries) o.series.push(prevLine(prevSeries, 0));
-      o.tooltip.valueFormatter = undefined;
-      o.tooltip.formatter = tipFmt([F.int, F.money, F.int]);
-    } else if (state.trend === 'spend') {
-      $('#trend-sub').textContent = 'Investimento e resultados';
-      o.yAxis = [yL((v) => F.compact(v)), yR((v) => F.compact(v))];
-      o.series = [Object.assign(line('Investimento', keys.map((k) => +get(k, 'spend').toFixed(2)), p.c[1]), { areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: p.c[1] + '55' }, { offset: 1, color: p.c[1] + '00' }]) } }),
-        line(resLabel(), keys.map((k) => get(k, 'res')), p.c[0], 1)];
-      if (prevSeries) o.series.push(prevLine(prevSeries, 0));
-      o.tooltip.formatter = tipFmt([F.money, F.int, F.money]);
-    } else {
-      $('#trend-sub').textContent = 'CTR do link e custo por clique';
-      o.yAxis = [yL((v) => nf.pct.format(v)), yR((v) => F.money(v))];
-      o.series = [line('CTR', keys.map((k) => getN(k, 'ctr')), p.c[2]), line('CPC', keys.map((k) => getN(k, 'cpc')), p.c[1], 1)];
-      if (prevSeries) o.series.push(prevLine(prevSeries, 0));
-      o.tooltip.formatter = tipFmt([F.pct, F.money, F.pct]);
-    }
+    const vals = keys.map((k) => (m.get(k) ? m.get(k).res : 0));
+    if (!vals.some(Boolean)) return emptyChart('trend-chart', `Nenhum ${singular()} no período`);
+    const maxV = Math.max(...vals); const maxI = vals.indexOf(maxV);
+    const labels = keys.map((k) => (state.gran === 'month' ? D.fmt(k, { day: undefined, month: 'short' }) : D.fmt(k)));
+    const o = baseOpt(p);
+    o.grid = { left: 4, right: 8, top: 34, bottom: 4, containLabel: true };
+    o.xAxis = { type: 'category', data: labels, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: p.text3, fontSize: 11, hideOverlap: true } };
+    o.yAxis = { type: 'value', axisLabel: { color: p.text3, fontSize: 11 }, splitLine: { lineStyle: { color: p.grid, type: 'dashed' } } };
+    o.series = [{
+      name: resLabel(), type: 'bar', barMaxWidth: 36, barCategoryGap: keys.length > 40 ? '22%' : '32%',
+      data: vals.map((v, i) => ({ value: v, itemStyle: { color: i === maxI ? new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: p.c[0] }, { offset: 1, color: alpha(p.c[0], 0.85) }]) : p.soft, borderRadius: 99 } })),
+      emphasis: { itemStyle: { color: p.c[0] } },
+      markPoint: { symbol: 'roundRect', symbolSize: [Math.max(32, String(maxV).length * 9 + 16), 24], symbolOffset: [0, -20], data: [{ coord: [maxI, maxV], value: maxV }], label: { color: '#fff', fontWeight: 600, fontSize: 11.5 }, itemStyle: { color: p.c[0] } },
+    }];
+    o.tooltip.axisPointer = { type: 'shadow', shadowStyle: { color: alpha(p.c[0], 0.06) } };
+    o.tooltip.formatter = (ps) => {
+      const i = ps[0].dataIndex; const x = m.get(keys[i]);
+      const head = state.gran === 'week' ? 'Semana de ' + labels[i] : labels[i];
+      return `<div style="font-weight:600;margin-bottom:4px">${head}</div>${resLabel()}: <b>${F.int(x ? x.res : 0)}</b><br>${cplLabel()}: <b>${F.money(x && x.cpl)}</b><br>Investimento: ${F.money(x ? x.spend : 0)}`;
+    };
     chart('trend-chart').setOption(o, true);
   }
+
+  // ---- Investimento (número grande + área)
+  function renderSpend() {
+    const p = palette();
+    $('#spend-value').innerHTML = `<strong class="num">${moneyParts(cur.spend)}</strong>${delta(cur.spend, prev && prev.spend, false, true)}`;
+    const keys = []; for (let k = state.since; k <= state.until; k = D.add(k, 1)) keys.push(k);
+    const m = aggregate(state.since, state.until, allowed, (r) => r[state.data._c.d]);
+    const vals = keys.map((k) => (m.get(k) ? +m.get(k).spend.toFixed(2) : 0));
+    if (!vals.some(Boolean)) return emptyChart('spend-chart', 'Sem investimento');
+    const maxV = Math.max(...vals); const maxI = vals.indexOf(maxV);
+    const o = baseOpt(p);
+    o.grid = { left: 2, right: 2, top: 30, bottom: 2 };
+    o.xAxis = { type: 'category', data: keys.map((k) => D.fmt(k)), show: false, boundaryGap: false };
+    o.yAxis = { type: 'value', show: false, min: (v) => v.min * 0.5 };
+    o.series = [{
+      type: 'line', smooth: 0.5, showSymbol: false, data: vals, name: 'Investimento',
+      lineStyle: { width: 2.5, color: p.c[0] },
+      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: alpha(p.c[0], 0.32) }, { offset: 1, color: alpha(p.c[0], 0.02) }]) },
+      markPoint: maxI < 3 || maxI > vals.length - 4 ? undefined : { symbol: 'roundRect', symbolSize: [74, 22], symbolOffset: [0, -18], data: [{ coord: [maxI, maxV], value: maxV }], label: { color: '#fff', fontSize: 11, fontWeight: 600, formatter: (x) => 'R$ ' + F.compact(x.value) }, itemStyle: { color: p.c[0] } },
+    }];
+    o.tooltip.formatter = (ps) => `<b>${ps[0].axisValue}</b><br>Investimento: <b>${F.money(ps[0].value)}</b>`;
+    chart('spend-chart').setOption(o, true);
+  }
+
   function tipFmt(fmts) {
     return (ps) => {
       if (!ps.length) return '';
@@ -370,10 +404,10 @@
     const g = goalValue(); if (v == null) return 'none'; if (!g) return 'none';
     return v <= g ? 'good' : v <= g * 1.3 ? 'warn' : 'bad';
   }
-  const cplChip = (v) => `<span class="cpl-chip ${cplClass(v)}">${F.money(v)}</span>`;
-  const statusPill = (s) => `<span class="status ${isActive(s) ? 'on' : 'off'}">${isActive(s) ? 'Ativo' : ({ PAUSED: 'Pausado', CAMPAIGN_PAUSED: 'Campanha pausada', ADSET_PAUSED: 'Conjunto pausado', ARCHIVED: 'Arquivado', DELETED: 'Excluído', DISAPPROVED: 'Reprovado', WITH_ISSUES: 'Com problemas', IN_PROCESS: 'Em análise', PENDING_REVIEW: 'Em análise' }[s] || 'Inativo')}</span>`;
+  const cplChip = (v) => `<span class="pill ${cplClass(v)}">${F.money(v)}</span>`;
+  const statusPill = (s) => `<span class="pill ${isActive(s) ? 'solid' : 'muted'}">${isActive(s) ? 'Ativo' : ({ PAUSED: 'Pausado', CAMPAIGN_PAUSED: 'Campanha pausada', ADSET_PAUSED: 'Conjunto pausado', ARCHIVED: 'Arquivado', DELETED: 'Excluído', DISAPPROVED: 'Reprovado', WITH_ISSUES: 'Com problemas', IN_PROCESS: 'Em análise', PENDING_REVIEW: 'Em análise' }[s] || 'Inativo')}</span>`;
 
-  // ---- Insights
+  // ---- Insights → Atenção / Oportunidades
   function renderInsights() {
     const d = state.data; const out = [];
     const byAd = aggregate(state.since, state.until, allowed, (r) => r[d._c.ad]);
@@ -382,19 +416,17 @@
     const ads = [...byAd.entries()].map(([id, m]) => Object.assign({ id }, m));
     const minR = Math.max(1, state.minRes);
     const qualified = ads.filter((a) => a.res >= minR).sort((a, b) => a.cpl - b.cpl);
-    const link = (id, txt) => `<a data-ad="${esc(id)}">${esc(txt)}</a>`;
-    if (!cur.spend) { $('#insights').innerHTML = '<div class="empty">Sem investimento no período/filtro selecionado.</div>'; return; }
+    // [tipo, ícone, título, texto, adId]
     if (qualified.length) {
       const b = qualified[0];
-      const pct = avg ? Math.round((1 - b.cpl / avg) * 100) : 0;
-      out.push(['good', '🏆', `Melhor anúncio: ${link(b.id, d.ads[b.id].name)}`, `${F.money(b.cpl)} por ${resLabel().toLowerCase().replace(/s$/, '')} com ${F.int(b.res)} resultados${pct > 0 ? ` — ${pct}% abaixo da média da conta` : ''}. Candidato a receber mais verba.`]);
+      out.push(['good', 'star', d.ads[b.id].name, `Melhor ${cplLabel()}: ${F.money(b.cpl)} · ${F.int(b.res)} ${resLabel().toLowerCase()}`, b.id]);
     }
     const thresh = Math.max((avg || 0) * 1.5, 50);
-    const burners = ads.filter((a) => a.res === 0 && a.spend >= thresh).sort((a, b) => b.spend - a.spend).slice(0, 3);
-    for (const a of burners) out.push(['bad', '🔥', `Gastando sem resultado: ${link(a.id, d.ads[a.id].name)}`, `${F.money(a.spend)} investidos e nenhum ${resLabel().toLowerCase().replace(/s$/, '')} no período${avg ? ` (equivale a ${(a.spend / avg).toFixed(1)}× o CPL médio)` : ''}. Revise criativo/público ou pause.`]);
-    if (qualified.length > 2) {
+    ads.filter((a) => a.res === 0 && a.spend >= thresh).sort((a, b) => b.spend - a.spend).slice(0, 2)
+      .forEach((a) => out.push(['bad', 'fire', d.ads[a.id].name, `${F.money(a.spend)} gastos sem nenhum ${singular()}`, a.id]));
+    if (qualified.length > 2 && avg) {
       const w = qualified[qualified.length - 1];
-      if (avg && w.cpl > avg * 1.6) out.push(['warn', '📉', `CPL alto: ${link(w.id, d.ads[w.id].name)}`, `${F.money(w.cpl)} — ${(w.cpl / avg).toFixed(1)}× a média. Consumiu ${F.money(w.spend)} (${Math.round(w.spend / cur.spend * 100)}% da verba).`]);
+      if (w.cpl > avg * 1.6) out.push(['warn', 'alert', d.ads[w.id].name, `${cplLabel()} ${F.money(w.cpl)} · ${(w.cpl / avg).toFixed(1).replace('.', ',')}× a média`, w.id]);
     }
     if (state.compare) {
       const [ps, pu] = prevRange();
@@ -403,29 +435,62 @@
         const p0 = prevCamp.get(id);
         if (!p0 || !p0.cpl || !m.cpl || m.res < minR || p0.res < minR) continue;
         const ch = (m.cpl - p0.cpl) / p0.cpl;
-        if (ch > 0.25) out.push(['warn', '⚠️', `CPL subiu ${Math.round(ch * 100)}% em ${esc(d.campaigns[id].name)}`, `De ${F.money(p0.cpl)} para ${F.money(m.cpl)} vs. período anterior.`]);
-        else if (ch < -0.2) out.push(['good', '✅', `CPL caiu ${Math.round(-ch * 100)}% em ${esc(d.campaigns[id].name)}`, `De ${F.money(p0.cpl)} para ${F.money(m.cpl)} vs. período anterior.`]);
+        if (ch > 0.25) out.push(['warn', 'up', d.campaigns[id].name, `${cplLabel()} subiu ${Math.round(ch * 100)}% (${F.money(p0.cpl)} → ${F.money(m.cpl)})`]);
+        else if (ch < -0.2) out.push(['good', 'down', d.campaigns[id].name, `${cplLabel()} caiu ${Math.round(-ch * 100)}% (${F.money(p0.cpl)} → ${F.money(m.cpl)})`]);
       }
     }
     if (cur.res > 5) {
-      const top = ads.sort((a, b) => b.res - a.res)[0];
-      const share = top.res / cur.res;
-      if (share > 0.4 && ads.length > 3) out.push(['info', '🎯', 'Dependência de um criativo', `${link(top.id, d.ads[top.id].name)} gera ${Math.round(share * 100)}% dos resultados. Teste variações para não depender de um único anúncio.`]);
       const camps = [...byCamp.entries()].filter(([, m]) => m.spend > 0).sort((a, b) => b[1].res - a[1].res);
       if (camps.length > 1) {
         const [cid, cm] = camps[0];
-        out.push(['info', '📍', `Principal origem: ${esc(d.campaigns[cid].name)}`, `${Math.round((cm.res / cur.res) * 100)}% dos resultados com ${Math.round((cm.spend / cur.spend) * 100)}% da verba.`]);
+        out.push(['info', 'layers', d.campaigns[cid].name, `Principal origem: ${Math.round((cm.res / cur.res) * 100)}% dos ${resLabel().toLowerCase()} com ${Math.round((cm.spend / cur.spend) * 100)}% da verba`]);
       }
+      const top = ads.slice().sort((a, b) => b.res - a.res)[0];
+      if (top && top.res / cur.res > 0.4 && ads.length > 3) out.push(['warn', 'alert', d.ads[top.id].name, `Concentra ${Math.round((top.res / cur.res) * 100)}% dos ${resLabel().toLowerCase()} — teste variações`, top.id]);
     }
     const pl = breakdown('placement', state.since, state.until, allowed);
     if (pl) {
       const best = [...pl.entries()].filter(([, m]) => m.res >= minR).sort((a, b) => a[1].cpl - b[1].cpl)[0];
-      if (best && avg) out.push(['info', '📱', `Posicionamento mais barato: ${esc(placementLabel(best[0]))}`, `${F.money(best[1].cpl)} por resultado (${F.int(best[1].res)} resultados).`]);
+      if (best) out.push(['info', 'phone', placementLabel(best[0]), `Posicionamento mais barato: ${F.money(best[1].cpl)}`]);
     }
     const wd = weekdayAgg();
     const bestW = wd.filter((x) => x.res >= minR).sort((a, b) => a.cpl - b.cpl)[0];
-    if (bestW && D.diff(state.since, state.until) >= 13) out.push(['info', '📅', `Melhor dia: ${bestW.label}`, `CPL médio de ${F.money(bestW.cpl)} às ${bestW.label.toLowerCase()}s.`]);
-    $('#insights').innerHTML = out.length ? out.map(([t, ico, title, text]) => `<div class="insight ${t}"><div class="ico">${ico}</div><div><b>${title}</b><p>${text}</p></div></div>`).join('') : '<div class="empty">Nada fora do normal neste período. 👌</div>';
+    if (bestW && D.diff(state.since, state.until) >= 13) out.push(['info', 'cal', bestW.label, `Melhor dia da semana: ${cplLabel()} ${F.money(bestW.cpl)}`]);
+
+    const row = ([t, ico, title, text, adId]) => {
+      const tag = adId ? 'button' : 'div';
+      return `<${tag} class="row-item" ${adId ? `data-ad="${esc(adId)}"` : ''} title="${esc(title + ' — ' + text)}"><span class="row-ico t-${t}">${ICON[ico]}</span><span style="min-width:0"><b>${esc(title)}</b><small class="t-${t}">${esc(text)}</small></span><span class="chev">${adId ? '›' : ''}</span></${tag}>`;
+    };
+    const rank = { bad: 0, warn: 1, good: 0, info: 1 };
+    const alerts = out.filter((x) => x[0] === 'bad' || x[0] === 'warn').sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 3);
+    const opps = out.filter((x) => x[0] === 'good' || x[0] === 'info').sort((a, b) => rank[a[0]] - rank[b[0]]).slice(0, 3);
+    $('#alerts').innerHTML = !cur.spend ? '<div class="row-empty">Sem investimento no período.</div>' : alerts.length ? alerts.map(row).join('') : '<div class="row-empty">Nada fora do normal neste período.</div>';
+    $('#opps').innerHTML = opps.length ? opps.map(row).join('') : '<div class="row-empty">Ainda sem volume para apontar oportunidades.</div>';
+  }
+
+  // ---- Melhores anúncios (lista)
+  function renderTopAds() {
+    const d = state.data;
+    const byAd = aggregate(state.since, state.until, allowed, (r) => r[d._c.ad]);
+    let ads = [...byAd.entries()].filter(([, m]) => m.spend > 0).map(([id, m]) => Object.assign({ id }, m));
+    const minR = Math.max(1, state.minRes);
+    if (state.topSort === 'cpl') ads = ads.filter((a) => a.res >= minR).sort((a, b) => a.cpl - b.cpl);
+    else if (state.topSort === 'res') ads.sort((a, b) => b.res - a.res || a.spend - b.spend);
+    else ads.sort((a, b) => b.spend - a.spend);
+    $('#top-sub').textContent = state.topSort === 'cpl' ? `Menor ${cplLabel()} entre anúncios com ${minR}+ ${resLabel().toLowerCase()}` : state.topSort === 'res' ? `Anúncios que mais trouxeram ${resLabel().toLowerCase()}` : 'Para onde a verba está indo';
+    const list = ads.slice(0, 5);
+    if (!list.length) { $('#top-ads').innerHTML = `<div class="empty">Nenhum anúncio com ${minR}+ ${resLabel().toLowerCase()} no período.</div>`; return; }
+    $('#top-ads').innerHTML = list.map((a) => {
+      const ad = d.ads[a.id]; const img = ad.thumb || ad.image;
+      return `<div class="list-row" data-ad="${esc(a.id)}" role="button" tabindex="0" aria-label="Ver detalhes de ${esc(ad.name)}">
+        <div class="lr-main"><span class="lr-thumb" style="${img ? `background-image:url('${esc(img)}')` : ''}"></span><div style="min-width:0"><div class="lr-name">${hl(ad.name)}</div><div class="lr-sub">${esc(d.campaigns[ad.campaignId].name)} › ${esc(d.adsets[ad.adsetId].name)}</div></div></div>
+        <div class="lr-stat keep"><small>${cplLabel()}</small>${cplChip(a.cpl)}</div>
+        <div class="lr-stat"><small>${resLabel()}</small><b class="num">${F.int(a.res)}</b></div>
+        <div class="lr-stat"><small>Investimento</small><b class="num">${F.money(a.spend)}</b></div>
+        <div class="lr-stat opt"><small>CTR</small><b class="num">${F.pct(a.ctr)}</b></div>
+        <div class="lr-end">${statusPill(ad.status)}<span class="pill outline">Detalhes</span></div>
+      </div>`;
+    }).join('');
   }
 
   // ---- Sankey
@@ -463,7 +528,7 @@
       },
     });
     o.series = [{
-      type: 'sankey', left: 4, right: narrow ? 110 : 190, top: 8, bottom: 8, nodeGap: 10, nodeWidth: 12, draggable: false,
+      type: 'sankey', left: 4, right: narrow ? 120 : 240, top: 8, bottom: 8, nodeGap: 10, nodeWidth: 12, draggable: false,
       emphasis: { focus: 'adjacency' }, nodeAlign: 'left', layoutIterations: 64,
       data: [...nodes.values()], links: [...links.entries()].map(([k, v]) => { const [s, t] = k.split('>'); return { source: s, target: t, value: v }; }),
       lineStyle: { color: 'gradient', opacity: 0.28, curveness: 0.5 },
@@ -647,7 +712,7 @@
     o.yAxis = { type: 'category', data: sorted.map(([k]) => labelFn(k)), axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: p.text2, fontSize: 11.5, width: 120, overflow: 'truncate' } };
     o.tooltip = Object.assign(o.tooltip, { trigger: 'item', formatter: (x) => { const m = sorted[x.dataIndex][1]; return `<b>${esc(x.name)}</b><br>${resLabel()}: ${F.int(m.res)}<br>Investimento: ${F.money(m.spend)}<br>${cplLabel()}: ${F.money(m.cpl)}<br>CTR: ${F.pct(m.ctr)}`; } });
     const fmt = bdFmt();
-    o.series = [{ type: 'bar', data: sorted.map(([, m]) => +(bdValue(m) || 0).toFixed(2)), barMaxWidth: 16, itemStyle: { color: p.c[colorIdx], borderRadius: [0, 4, 4, 0] }, label: { show: true, position: 'right', color: p.text2, fontSize: 11, formatter: (x) => fmt(x.value) } }];
+    o.series = [{ type: 'bar', data: sorted.map(([, m]) => +(bdValue(m) || 0).toFixed(2)), barMaxWidth: 14, itemStyle: { color: p.c[0], borderRadius: 99 }, label: { show: true, position: 'right', color: p.text2, fontSize: 11, formatter: (x) => fmt(x.value) } }];
     chart(id).setOption(o, true);
   }
   function renderBreakdowns() {
@@ -682,7 +747,8 @@
       inRange: { color: lowGood ? [p.good, p.surface, p.bad] : [p.surface, p.c[1], p.c[0]] } };
     o.tooltip = Object.assign(o.tooltip, { trigger: 'item', formatter: (x) => { const m = x.data.m; if (!m) return 'Sem dados'; return `<b>${gens[x.data.value[1]][1]} · ${ages[x.data.value[0]]}</b><br>${resLabel()}: ${F.int(m.res)}<br>Investimento: ${F.money(m.spend)}<br>${cplLabel()}: ${F.money(m.cpl)}`; } });
     const fmt = bdFmt();
-    o.series = [{ type: 'heatmap', data: data.map((x) => ({ value: x.slice(0, 3), m: x[3] })), label: { show: true, color: p.text, fontSize: 10.5, fontWeight: 600, textBorderColor: p.surface, textBorderWidth: 2.5, formatter: (x) => (x.data.value[2] === '-' ? '' : fmt(x.data.value[2]).replace(/,00$/, '')) }, itemStyle: { borderColor: p.surface, borderWidth: 3, borderRadius: 6 } }];
+    const hiCut = state.bd === 'cpl' ? Infinity : min + (max - min) * 0.55;
+    o.series = [{ type: 'heatmap', data: data.map((x) => ({ value: x.slice(0, 3), m: x[3], label: { color: x[2] != null && x[2] !== '-' && x[2] >= hiCut ? '#fff' : p.text } })), label: { show: true, fontSize: 11, fontWeight: 600, formatter: (x) => (x.data.value[2] === '-' ? '' : fmt(x.data.value[2]).replace(/,00$/, '')) }, itemStyle: { borderColor: p.surface, borderWidth: 3, borderRadius: 6 } }];
     chart('age-chart').setOption(o, true);
   }
 
@@ -701,8 +767,8 @@
     o.yAxis = [{ type: 'value', axisLabel: { color: p.text3, fontSize: 11 }, splitLine: ax.splitLine }, { type: 'value', axisLabel: { color: p.text3, fontSize: 11, formatter: (v) => F.money(v) }, splitLine: { show: false } }];
     const bestIdx = w.reduce((bi, x, i) => (x.cpl != null && (w[bi].cpl == null || x.cpl < w[bi].cpl) ? i : bi), 0);
     o.series = [
-      { name: resLabel(), type: 'bar', data: w.map((x, i) => ({ value: x.res, itemStyle: { color: i === bestIdx ? p.c[3] : p.c[0], borderRadius: [4, 4, 0, 0] } })), barMaxWidth: 30 },
-      { name: cplLabel(), type: 'line', yAxisIndex: 1, data: w.map((x) => (x.cpl == null ? null : +x.cpl.toFixed(2))), smooth: 0.3, symbolSize: 6, lineStyle: { color: p.c[1], width: 2.2 }, itemStyle: { color: p.c[1] } },
+      { name: resLabel(), type: 'bar', data: w.map((x, i) => ({ value: x.res, itemStyle: { color: i === bestIdx ? p.c[0] : p.soft, borderRadius: 99 } })), barMaxWidth: 30 },
+      { name: cplLabel(), type: 'line', yAxisIndex: 1, data: w.map((x) => (x.cpl == null ? null : +x.cpl.toFixed(2))), smooth: 0.3, symbolSize: 6, lineStyle: { color: p.c[3], width: 2.2 }, itemStyle: { color: p.c[3] } },
     ];
     o.tooltip.formatter = tipFmt([F.int, F.money]);
     chart('weekday-chart').setOption(o, true);
@@ -718,9 +784,9 @@
     ];
     const max = c.imp || 1;
     $('#funnel').innerHTML = steps.map(([l, v, rate, rl], i) => {
-      const w = i === 0 ? 100 : Math.max(6, Math.pow(v / max, 0.28) * 100);
+      const w = i === 0 ? 100 : Math.max(8, Math.pow(v / max, 0.28) * 100);
       return `<div class="f-step"><div class="lbl">${esc(l)}</div><div class="f-bar"><i style="width:${w}%"></i><b class="num">${F.int(v)}</b></div><div class="rate">${rate == null ? '' : `<strong class="num">${F.pct(rate)}</strong>${rl}`}</div></div>`;
-    }).join('') + `<div class="f-step" style="margin-top:6px"><div class="lbl">Custo</div><div class="muted" style="font-size:12.5px">${F.money(c.cpm)} por mil impressões · ${F.money(c.cpc)} por clique · <b style="color:var(--text)">${F.money(c.cpl)}</b> por ${resLabel().toLowerCase().replace(/s$/, '')}</div><div></div></div>`;
+    }).join('') + `<div class="f-cost"><div><span>CPM</span><strong class="num">${F.money(c.cpm)}</strong></div><div><span>CPC (link)</span><strong class="num">${F.money(c.cpc)}</strong></div><div><span>${cplLabel()}</span><strong class="num">${F.money(c.cpl)}</strong></div></div>`;
   }
 
   // ---- Drawer (detalhe do anúncio)
@@ -745,8 +811,8 @@
         <div><span>CPC</span><strong class="num">${F.money(m.cpc)}</strong></div>
         <div><span>Conv. clique→lead</span><strong class="num">${F.pct(m.cvr)}</strong></div>
       </div>
-      <div><div class="kpi-label" style="margin-bottom:6px">Evolução diária</div><div id="dr-chart" style="height:220px"></div></div>
-      ${a.title || a.body ? `<div><div class="kpi-label" style="margin-bottom:6px">Texto do anúncio</div><div class="ad-copy">${a.title ? `<b>${esc(a.title)}</b>\n` : ''}${esc(a.body || '')}</div></div>` : ''}
+      <div><div class="sub-title">Evolução diária</div><div id="dr-chart" style="height:220px"></div></div>
+      ${a.title || a.body ? `<div><div class="sub-title">Texto do anúncio</div><div class="ad-copy">${a.title ? `<b>${esc(a.title)}</b>\n` : ''}${esc(a.body || '')}</div></div>` : ''}
       <div class="muted" style="font-size:12px">ID do anúncio: ${esc(id)}</div>`;
     $('#drawer').classList.add('open'); $('#scrim').classList.add('open'); $('#drawer').setAttribute('aria-hidden', 'false');
     requestAnimationFrame(() => {
@@ -775,7 +841,7 @@
   // ------------------------------------------------------------------ multi-select
   function MultiSelect(wrap, opts) {
     wrap.innerHTML = `<button class="btn" aria-haspopup="listbox" aria-expanded="false"><span class="ms-l">${opts.label}</span><span class="badge-count hidden"></span><svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg></button>
-      <div class="popover left ms-pop hidden"><input type="search" placeholder="Filtrar ${opts.label.toLowerCase()}…" /><div class="ms-list"></div><div class="ms-foot"><button data-a="none">Limpar</button><button data-a="close">Concluir</button></div></div>`;
+      <div class="popover ms-pop hidden"><input type="search" placeholder="Filtrar ${opts.label.toLowerCase()}…" /><div class="ms-list"></div><div class="ms-foot"><button data-a="none">Limpar</button><button data-a="close">Concluir</button></div></div>`;
     const btn = $('button', wrap), pop = $('.popover', wrap), list = $('.ms-list', pop), inp = $('input', pop), badge = $('.badge-count', wrap);
     function draw() {
       const q = norm(inp.value); const sel = opts.selected();
@@ -811,7 +877,6 @@
   document.addEventListener('click', closePops);
   function togglePop(btn, pop) { btn.addEventListener('click', (e) => { e.stopPropagation(); const open = pop.classList.contains('hidden'); closePops(); if (open) { pop.classList.remove('hidden'); btn.setAttribute('aria-expanded', 'true'); } }); pop.addEventListener('click', (e) => e.stopPropagation()); }
   togglePop($('#date-btn'), $('#date-pop'));
-  togglePop($('#menu-btn'), $('#menu-pop'));
 
   function drawPresets() {
     $('#preset-list').innerHTML = PRESETS.map(([k, l]) => `<button data-p="${k}" aria-pressed="${state.preset === k}">${l}</button>`).join('');
@@ -829,7 +894,6 @@
   $('#mode-seg').addEventListener('click', (e) => { const m = e.target.closest('button'); if (!m) return; state.mode = m.dataset.mode; store.set('mode', state.mode); render(); });
   $('#status-seg').addEventListener('click', (e) => { const m = e.target.closest('button'); if (!m) return; state.status = m.dataset.status; render(); });
   const segBind = (sel, key, attr, fn) => $(sel).addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state[key] = b.dataset[attr]; $$(sel + ' button').forEach((x) => x.setAttribute('aria-pressed', x === b)); (fn || render)(); });
-  segBind('#trend-seg', 'trend', 't', renderTrend);
   segBind('#gran-seg', 'gran', 'g', renderTrend);
   segBind('#share-seg', 'share', 's', renderShare);
   segBind('#bd-seg', 'bd', 'm', renderBreakdowns);
@@ -841,16 +905,21 @@
     if (e.key === 'Escape') { closePops(); closeDrawer(); }
   });
   $('#chips').addEventListener('click', (e) => {
-    if (e.target.id === 'clear-all') { state.campaigns.clear(); state.adsets.clear(); state.q = ''; $('#q').value = ''; return render(); }
+    if (e.target.id === 'clear-all') { state.campaigns.clear(); state.adsets.clear(); state.q = ''; state.status = 'all'; $('#q').value = ''; return render(); }
     const b = e.target.closest('button[data-t]'); if (!b) return;
     if (b.dataset.t === 'c') state.campaigns.delete(b.dataset.id);
     if (b.dataset.t === 's') state.adsets.delete(b.dataset.id);
     if (b.dataset.t === 'q') { state.q = ''; $('#q').value = ''; }
+    if (b.dataset.t === 'st') state.status = 'all';
     render();
   });
   $('#rank-sort').addEventListener('change', (e) => { state.rankSort = e.target.value; state.rankLimit = 8; renderRanking(); });
-  $('#min-res').addEventListener('change', (e) => { state.minRes = Math.max(0, +e.target.value || 0); store.set('minRes', state.minRes); renderRanking(); renderInsights(); });
-  $('#cpl-goal').addEventListener('change', (e) => { state.goal = +e.target.value > 0 ? +e.target.value : null; store.set('goal', state.goal); renderRanking(); renderTable(); });
+  $('#min-res').addEventListener('change', (e) => { state.minRes = Math.max(0, +e.target.value || 0); store.set('minRes', state.minRes); render(); });
+  $('#cpl-goal').addEventListener('change', (e) => { state.goal = +e.target.value > 0 ? +e.target.value : null; store.set('goal', state.goal); render(); });
+  $('#top-sort').addEventListener('change', (e) => { state.topSort = e.target.value; renderTopAds(); });
+  $('#theme-row').addEventListener('click', () => $('#theme-btn').click());
+  window.addEventListener('hashchange', () => { const pg = pageFromHash(); if (pg !== state.page) { state.page = pg; closePops(); render(); window.scrollTo(0, 0); } });
+  document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.list-row[data-ad]')) { e.preventDefault(); openAd(e.target.dataset.ad); } });
   $('#rank-more').addEventListener('click', () => { state.rankLimit += 8; renderRanking(); });
   document.addEventListener('click', (e) => { const t = e.target.closest('[data-ad]'); if (t && !e.target.closest('[data-exp]')) openAd(t.dataset.ad); });
   $('#scrim').addEventListener('click', closeDrawer);
@@ -918,18 +987,22 @@
   // ------------------------------------------------------------------ URL hash (visão compartilhável)
   function writeHash() {
     const p = new URLSearchParams();
-    p.set('p', state.preset);
+    if (state.preset !== 'last_30') p.set('p', state.preset);
     if (state.preset === 'custom') { p.set('s', state.since); p.set('u', state.until); }
     if (state.mode !== 'leads') p.set('m', state.mode);
     if (state.campaigns.size) p.set('c', [...state.campaigns].join(','));
     if (state.adsets.size) p.set('as', [...state.adsets].join(','));
     if (state.status !== 'all') p.set('st', state.status);
     if (state.q) p.set('q', state.q);
-    if (state.data && state.data.source === 'demo' && new URLSearchParams(location.search).has('demo')) p.set('demo', '1');
-    history.replaceState(null, '', '#' + p.toString());
+    const qs = p.toString();
+    history.replaceState(null, '', location.pathname + location.search + '#/' + PAGES[state.page].slug + (qs ? '?' + qs : ''));
   }
   function readHash() {
-    const p = new URLSearchParams(location.hash.slice(1));
+    const h = location.hash.replace(/^#\/?/, '');
+    let [slug, qs] = h.split('?');
+    if (slug && slug.includes('=')) { qs = slug; slug = ''; }
+    state.page = pageBySlug(slug);
+    const p = new URLSearchParams(qs || '');
     if (p.get('p')) state.preset = p.get('p');
     if (state.preset === 'custom') { state.since = p.get('s'); state.until = p.get('u'); if (!state.since || !state.until) state.preset = 'last_30'; }
     if (p.get('m')) state.mode = p.get('m');
@@ -966,7 +1039,7 @@
     readHash();
     $('#min-res').value = state.minRes;
     if (state.goal) $('#cpl-goal').value = state.goal;
-    const wantDemo = new URLSearchParams(location.search).has('demo') || new URLSearchParams(location.hash.slice(1)).has('demo');
+    const wantDemo = new URLSearchParams(location.search).has('demo') || /[?&]demo=/.test(location.hash);
     if (wantDemo || !(await loadLive(false))) useData(window.BNRDemo.build(), false);
     // recarrega dados a cada 30 min se a aba ficar aberta
     setInterval(() => { if (state.data && state.data.source === 'live' && document.visibilityState === 'visible') loadLive(false); }, 30 * 60 * 1000);
