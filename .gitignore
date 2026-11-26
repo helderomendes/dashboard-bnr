@@ -1,0 +1,11 @@
+# Segredos
+.env
+.env.*
+!.env.example
+
+# Dados da conta (gerados pela sincronização — não versionar)
+data/*.json
+_site/
+
+node_modules/
+.DS_Store

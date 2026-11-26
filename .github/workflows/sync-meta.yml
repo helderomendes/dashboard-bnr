@@ -1,0 +1,71 @@
+name: Sincronizar Meta Ads e publicar dashboard
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"   # a cada 3 horas (UTC)
+  workflow_dispatch:          # botão "Run workflow" para atualizar na hora
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Buscar dados da Meta Marketing API
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          DAYS: ${{ vars.DAYS || '180' }}
+          META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
+          LEAD_ACTION_TYPES: ${{ vars.LEAD_ACTION_TYPES }}
+          OUT: _site/data/insights.json
+        run: node scripts/fetch-meta.mjs
+
+      - name: Montar site
+        run: cp -r index.html assets _site/
+
+      # Opção A (padrão): GitHub Pages
+      - if: vars.DEPLOY_TARGET != 'cloudflare'
+        uses: actions/configure-pages@v5
+      - if: vars.DEPLOY_TARGET != 'cloudflare'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      # Opção B: Cloudflare Pages (permite exigir login por e-mail com Cloudflare Access, grátis)
+      - name: Publicar no Cloudflare Pages
+        if: vars.DEPLOY_TARGET == 'cloudflare' && env.CF_TOKEN != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy _site --project-name=${{ vars.CF_PROJECT || 'dashboard-bnr' }} --branch=main
+
+  deploy:
+    needs: build
+    if: vars.DEPLOY_TARGET != 'cloudflare'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

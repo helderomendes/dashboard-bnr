@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BNR Meta Ads</title>
+  <meta name="description" content="Dashboard de performance Meta Ads da BNR Construtora: de onde vem cada lead, CPL por campanha, conjunto e anúncio." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2314213d'/%3E%3Cpath d='M16 46V26l16-10 16 10v20H38V34H26v12z' fill='%23f0b14a'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <script>
+    try { const t = localStorage.getItem('bnr.theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">BNR</div>
+        <div style="min-width:0">
+          <h1>Performance Meta Ads</h1>
+          <p id="account-line"><span class="dot"></span>Carregando…</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="pop-wrap">
+          <button class="btn" id="date-btn" aria-haspopup="dialog" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <span id="date-label">Últimos 30 dias</span>
+            <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="popover date-pop hidden" id="date-pop" role="dialog" aria-label="Período">
+            <div class="preset-list" id="preset-list"></div>
+            <div class="custom-range">
+              <label>De <input type="date" id="since" /></label>
+              <label>Até <input type="date" id="until" /></label>
+              <button class="btn primary" id="apply-range" style="justify-content:center">Aplicar período</button>
+              <div class="hint" id="range-hint"></div>
+            </div>
+          </div>
+        </div>
+
+        <label class="toggle" title="Compara com o período anterior de mesma duração">
+          <input type="checkbox" id="compare" checked /> Comparar
+        </label>
+
+        <div class="seg" role="group" aria-label="O que contar como resultado" id="mode-seg">
+          <button data-mode="leads" aria-pressed="true" title="Leads de formulário instantâneo + leads no site (pixel)">Leads</button>
+          <button data-mode="msgs" aria-pressed="false" title="Conversas iniciadas no WhatsApp/Messenger/Direct">Conversas</button>
+          <button data-mode="all" aria-pressed="false" title="Leads + conversas">Todos</button>
+        </div>
+
+        <button class="btn icon" id="theme-btn" title="Alternar tema claro/escuro" aria-label="Alternar tema">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+
+        <div class="pop-wrap">
+          <button class="btn icon" id="menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Mais opções">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          </button>
+          <div class="popover hidden" id="menu-pop" role="menu" style="width:290px">
+            <div class="menu-list">
+              <button id="copy-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>Copiar link desta visão<small>Período, filtros e busca vão juntos</small></span></button>
+              <button id="export-csv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span>Exportar anúncios (CSV)<small>Abre no Excel / Google Planilhas</small></span></button>
+              <div class="menu-sep"></div>
+              <label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Importar CSV do Gerenciador<small>Ou arraste o arquivo para a página</small></span><input type="file" id="csv-input" accept=".csv,text/csv" hidden /></label>
+              <button id="load-live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Recarregar dados sincronizados<small>data/insights.json</small></span></button>
+              <button id="load-demo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg><span>Ver dados de demonstração</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filterbar">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="q" placeholder="Buscar campanha, conjunto ou anúncio…" autocomplete="off" aria-label="Buscar" />
+        <kbd>/</kbd>
+      </div>
+      <div class="pop-wrap" id="ms-campaigns"></div>
+      <div class="pop-wrap" id="ms-adsets"></div>
+      <div class="seg" role="group" aria-label="Status" id="status-seg">
+        <button data-status="all" aria-pressed="true">Todos</button>
+        <button data-status="active" aria-pressed="false">Ativos</button>
+        <button data-status="inactive" aria-pressed="false">Pausados</button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </header>
+
+  <main id="main">
+    <div id="banner"></div>
+
+    <section class="kpis" id="kpis" aria-label="Indicadores principais"></section>
+
+    <section class="grid g-2">
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>Evolução no período</h2>
+            <p id="trend-sub">Resultados por dia e custo por resultado</p>
+          </div>
+          <div class="spacer"></div>
+          <div class="seg" id="trend-seg">
+            <button data-t="res" aria-pressed="true">Resultados × CPL</button>
+            <button data-t="spend" aria-pressed="false">Investimento</button>
+            <button data-t="ctr" aria-pressed="false">CTR × CPC</button>
+          </div>
+          <div class="seg" id="gran-seg">
+            <button data-g="day" aria-pressed="true">Dia</button>
+            <button data-g="week" aria-pressed="false">Semana</button>
+            <button data-g="month" aria-pressed="false">Mês</button>
+          </div>
+        </div>
+        <div class="card-body"><div class="chart" id="trend-chart"></div></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>Insights automáticos</h2>
+            <p>O que merece sua atenção neste período</p>
+          </div>
+        </div>
+        <div class="card-body"><div class="insights" id="insights"></div></div>
+      </article>
+    </section>
+
+    <section class="grid g-2">
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>De onde vêm os leads</h2>
+            <p>Fluxo Campanha → Conjunto → Anúncio (espessura = volume de resultados)</p>
+          </div>
+        </div>
+        <div class="card-body"><div class="chart" id="sankey-chart" style="height:420px"></div></div>
+      </article>
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>Participação por campanha</h2>
+            <p>Investimento vs. resultados</p>
+          </div>
+          <div class="spacer"></div>
+          <div class="seg" id="share-seg">
+            <button data-s="res" aria-pressed="true">Resultados</button>
+            <button data-s="spend" aria-pressed="false">Verba</button>
+          </div>
+        </div>
+        <div class="card-body"><div class="chart" id="share-chart" style="height:420px"></div></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>Ranking de anúncios</h2>
+          <p id="rank-sub">Quais criativos estão trazendo leads mais baratos</p>
+        </div>
+        <div class="spacer"></div>
+        <label class="inline-field">Ordenar
+          <select id="rank-sort">
+            <option value="cpl">Melhor CPL</option>
+            <option value="res">Mais resultados</option>
+            <option value="spend">Maior investimento</option>
+            <option value="ctr">Maior CTR</option>
+            <option value="worst">Pior CPL</option>
+          </select>
+        </label>
+        <label class="inline-field" title="Anúncios com menos resultados que isso não entram no ranking de CPL (evita falso campeão)">Mín. resultados <input type="number" id="min-res" min="0" step="1" value="3" style="width:64px" /></label>
+        <label class="inline-field" title="Usada para colorir o CPL: verde ≤ meta, amarelo até 30% acima, vermelho acima disso">Meta de CPL <input type="number" id="cpl-goal" min="0" step="1" placeholder="auto" /></label>
+      </div>
+      <div class="card-body"><div class="rank-grid" id="ranking"></div>
+        <div style="text-align:center;margin-top:14px"><button class="btn" id="rank-more">Ver mais anúncios</button></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>Detalhamento por campanha, conjunto e anúncio</h2>
+          <p>Clique para expandir · clique no anúncio para ver o criativo</p>
+        </div>
+        <div class="spacer"></div>
+        <div class="seg" id="table-seg">
+          <button data-v="tree" aria-pressed="true">Hierarquia</button>
+          <button data-v="campaign" aria-pressed="false">Campanhas</button>
+          <button data-v="adset" aria-pressed="false">Conjuntos</button>
+          <button data-v="ad" aria-pressed="false">Anúncios</button>
+        </div>
+        <button class="btn" id="expand-all">Expandir tudo</button>
+      </div>
+      <div class="table-wrap"><table id="table"></table></div>
+    </section>
+
+    <div class="section-title"><h2>Público e posicionamento</h2><span class="muted" style="font-size:12px" id="bd-note"></span>
+      <div style="margin-left:auto" class="seg" id="bd-seg">
+        <button data-m="res" aria-pressed="true">Resultados</button>
+        <button data-m="cpl" aria-pressed="false">CPL</button>
+        <button data-m="spend" aria-pressed="false">Investimento</button>
+      </div>
+    </div>
+    <section class="grid g-3 keep-2">
+      <article class="card">
+        <div class="card-head"><div><h2>Posicionamentos</h2><p>Feed, Stories, Reels…</p></div></div>
+        <div class="card-body"><div class="chart sm" id="placement-chart"></div></div>
+      </article>
+      <article class="card">
+        <div class="card-head"><div><h2>Idade e gênero</h2><p>Mapa de calor</p></div></div>
+        <div class="card-body"><div class="chart sm" id="age-chart"></div></div>
+      </article>
+      <article class="card">
+        <div class="card-head"><div><h2>Regiões</h2><p>Estados com mais resultado</p></div></div>
+        <div class="card-body"><div class="chart sm" id="region-chart"></div></div>
+      </article>
+    </section>
+
+    <section class="grid g-2e">
+      <article class="card">
+        <div class="card-head"><div><h2>Melhor dia da semana</h2><p>Resultados e CPL por dia da semana</p></div></div>
+        <div class="card-body"><div class="chart sm" id="weekday-chart"></div></div>
+      </article>
+      <article class="card">
+        <div class="card-head"><div><h2>Funil de conversão</h2><p>Da impressão ao lead</p></div></div>
+        <div class="card-body"><div class="funnel" id="funnel"></div></div>
+      </article>
+    </section>
+  </main>
+
+  <footer>
+    <span id="foot-left">BNR Construtora · Meta Ads</span>
+    <span>Dados da Meta Marketing API · atribuição igual à do Gerenciador de Anúncios</span>
+  </footer>
+
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Detalhes do anúncio">
+    <div class="drawer-head">
+      <div style="flex:1;min-width:0">
+        <div class="crumb" id="dr-crumb"></div>
+        <h3 id="dr-title"></h3>
+      </div>
+      <button class="btn icon" id="dr-close" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="drawer-body" id="dr-body"></div>
+  </aside>
+  <div class="toast" id="toast"></div>
+  <div class="dropzone hidden" id="dropzone">Solte o CSV exportado do Gerenciador de Anúncios</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.1/echarts.min.js"></script>
+  <script src="assets/demo.js"></script>
+  <script src="assets/csv.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

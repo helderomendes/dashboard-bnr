@@ -1,0 +1,14 @@
+{
+  "name": "dashboard-bnr",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard de performance Meta Ads da BNR Construtora — origem de cada lead e CPL por campanha, conjunto e anúncio.",
+  "type": "module",
+  "scripts": {
+    "sync": "node --env-file-if-exists=.env scripts/fetch-meta.mjs",
+    "dev": "npx --yes serve -l 3000 ."
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
