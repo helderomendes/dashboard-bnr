@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "17 */3 * * *"
   workflow_dispatch:
+    inputs:
+      demo:
+        description: Publicar com dados fictícios
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +28,7 @@ jobs:
           node-version: 22
 
       - name: Buscar dados da Meta Marketing API
+        if: ${{ inputs.demo != true }}
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
@@ -37,6 +43,7 @@ jobs:
       - name: Montar o dashboard protegido
         run: |
           bundle=.vercel/output/functions/dashboard.func
+          mkdir -p "$bundle/site"
           cp -r index.html assets "$bundle/site/"
           cat > .vercel/output/config.json <<'JSON'
           {"version":3,"routes":[{"src":"^/(.*)$","dest":"/dashboard?asset=$1"}]}
