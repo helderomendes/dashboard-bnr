@@ -107,10 +107,11 @@ jobs:
           node scripts/fetch-meta.mjs
 
       # Não derruba a publicação: sem permissão, o motivo aparece na aba Vendas
+      # META_LEADS_TOKEN (opcional): token só para os leads, para não trocar o token principal
       - name: Buscar leads dos formulários da Meta
         if: ${{ inputs.demo != true }}
         env:
-          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_ACCESS_TOKEN: ${{ secrets.META_LEADS_TOKEN || secrets.META_ACCESS_TOKEN }}
           META_PAGE_IDS: ${{ vars.META_PAGE_IDS }}
           META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
           PREV_LEADS: .cache/leads-prev.json

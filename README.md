@@ -174,6 +174,8 @@ O token atual só lê números (`ads_read`). Para ler cada lead:
 2. **Gere um novo token** com `ads_read`, `leads_retrieval`, `pages_show_list`, `pages_read_engagement` e `pages_manage_ads`. Troque o secret `META_ACCESS_TOKEN`.
 3. Opcional: variável `META_PAGE_IDS` com os IDs das Páginas, se o token tiver acesso a outras.
 
+**Alternativa sem trocar o token principal:** crie o secret `META_LEADS_TOKEN` com um token que leia os leads (por exemplo, o seu token de usuário de longa duração, com `leads_retrieval`, `pages_show_list` e `pages_read_engagement`). Só a busca de leads usa esse token; os números do dashboard continuam com o `META_ACCESS_TOKEN`. Um token de usuário enxerga todas as Páginas que você administra, então defina também `META_PAGE_IDS` só com a Página da BNR. Token de usuário vence (o de longa duração dura cerca de 60 dias): quando vencer, a aba Vendas mostra o erro e os leads já baixados continuam no cache cifrado.
+
 > A Meta só devolve leads de até **90 dias**. Por isso o `CACHE_KEY` é importante: o histórico vai se acumulando no cache cifrado. Sem ele, as vendas de leads com mais de 90 dias só são ligadas por UTM ou pelo nome do anúncio/campanha no Dommus.
 
 ### 2. Levar o Dommus até o dashboard

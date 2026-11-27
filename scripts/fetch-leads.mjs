@@ -8,6 +8,7 @@
  * Variáveis de ambiente:
  *   META_ACCESS_TOKEN  token do usuário do sistema com leads_retrieval, pages_show_list,
  *                      pages_read_engagement e ads_read, com a Página atribuída a ele
+ *   (no workflow, META_LEADS_TOKEN tem prioridade: um token só para os leads)
  *   META_PAGE_IDS      opcional: IDs das Páginas separados por vírgula (senão usa as Páginas do token)
  *   META_API_VERSION   padrão v23.0
  *   PREV_LEADS         JSON da execução anterior (cache): a Meta só devolve leads de até 90 dias
@@ -97,7 +98,7 @@ async function main() {
       ? await Promise.all(PAGE_IDS.map((id) => request(url(id, { fields: 'id,name,access_token' }), TOKEN)))
       : await all('me/accounts', { fields: 'id,name,access_token' }, TOKEN);
     status.pages = pages.length;
-    if (!pages.length) throw Object.assign(new Error('Nenhuma Página atribuída ao usuário do sistema'), { code: 'NO_PAGE' });
+    if (!pages.length) throw Object.assign(new Error('Nenhuma Página acessível com este token'), { code: 'NO_PAGE' });
     // Só pede o que ainda não está no cache (com 2 dias de folga)
     const newest = prev.reduce((m, l) => (l.t > m ? l.t : m), '');
     const since = newest ? Math.floor(Date.parse(newest) / 1000) - 2 * 86400 : 0;
@@ -121,9 +122,9 @@ async function main() {
     status.connected = true;
   } catch (e) {
     const hint = e.code === 200 || e.code === 10 || e.code === 190 || e.code === 'NO_PAGE'
-      ? ' O token precisa de leads_retrieval + pages_show_list + pages_read_engagement e da Página atribuída ao usuário do sistema (veja o README).'
+      ? '. O token precisa de leads_retrieval, pages_show_list e pages_read_engagement, com acesso à Página (veja o README).'
       : '';
-    status.error = e.message + hint;
+    status.error = (hint ? String(e.message).replace(/[.\s]+$/, '') : e.message) + hint;
     console.warn(`! Leads do formulário não baixados: ${status.error}`);
   }
   await save();
