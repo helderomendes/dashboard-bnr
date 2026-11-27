@@ -131,6 +131,11 @@ jobs:
       - name: Cruzar leads com as vendas do Dommus
         if: ${{ inputs.demo != true }}
         env:
+          DOMMUS_SLUG: ${{ vars.DOMMUS_SLUG || secrets.DOMMUS_SLUG }}
+          DOMMUS_DEV_KEY: ${{ secrets.DOMMUS_DEV_KEY }}
+          DOMMUS_USER: ${{ secrets.DOMMUS_USER }}
+          DOMMUS_PASSWORD: ${{ secrets.DOMMUS_PASSWORD }}
+          DOMMUS_TOKEN: ${{ secrets.DOMMUS_TOKEN }}
           DOMMUS_API_URL: ${{ secrets.DOMMUS_API_URL }}
           DOMMUS_API_TOKEN: ${{ secrets.DOMMUS_API_TOKEN }}
           DOMMUS_AUTH_HEADER: ${{ vars.DOMMUS_AUTH_HEADER }}
@@ -234,3 +239,8 @@ jobs:
             const s = (JSON.parse(require("fs").readFileSync("build/leads.json","utf8")).status) || {};
             if (s.error) { console.log("::error title=Leads da Meta não baixados::" + s.error); process.exit(1); }
             console.log("• Leads OK: " + (s.fetched || 0) + " baixados agora");'
+          [ -f build/sales.json ] || exit 0
+          node -e '
+            const d = (JSON.parse(require("fs").readFileSync("build/sales.json","utf8")).dommus) || {};
+            if (d.source && d.error) { console.log("::error title=Dommus não lido::" + d.error); process.exit(1); }
+            if (d.connected) console.log("• Dommus OK: " + d.records + " oportunidades");'

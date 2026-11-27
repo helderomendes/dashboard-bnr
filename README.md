@@ -194,6 +194,21 @@ Escolha uma forma:
 
 O DE/PARA das colunas é automático (aceita "Nome do Lead", "E-mail", "Telefone", "Etapa", "Data da Venda", "Valor da Venda", "Empreendimento"…). Se alguma coluna tiver outro nome, defina a variável `DOMMUS_FIELD_MAP`, por exemplo `{"stage":"Status Atual","value":"VGV Negociado","saleDate":"Data Assinatura"}`. Os campos são `name`, `email`, `ddd`, `phone`, `created`, `stage`, `stageType`, `saleDate`, `value`, `product`, `origin`, `media`, `campaign` e `utmContent`.
 
+### API pública do Dommus (automático)
+
+O Dommus Prospecta tem uma API pública ([documentação](https://documenter.getpostman.com/view/17793777/2s9YsT5o3C)). Com ela, cada sincronização busca todas as oportunidades com o lead (nome, e-mail, telefone, campanha, mídia, origem), a etapa, a data e o valor da venda, sem export.
+
+Secrets (Settings › Secrets and variables › Actions):
+
+| Secret | Valor |
+|---|---|
+| `DOMMUS_SLUG` | o identificador do cliente no Dommus (também pode ser variável) |
+| `DOMMUS_DEV_KEY` | a chave identificadora de desenvolvedor, fornecida pelo Dommus |
+| `DOMMUS_USER` | e-mail de um usuário do Dommus (de preferência um usuário só para a integração) |
+| `DOMMUS_PASSWORD` | a senha desse usuário |
+
+Quando esses secrets existem, a API tem prioridade sobre o export. No log, o passo "Cruzar leads com as vendas do Dommus" mostra só contagens e nomes de campos, nunca dados de clientes. Se o login falhar, o job termina em vermelho depois de publicar.
+
 ### 3. UTMs nos anúncios de landing page (comece hoje)
 
 Lead de landing page não passa pelo formulário da Meta, então a única ligação exata é a UTM. Em **Anúncio › Destino › Parâmetros de URL**, use:

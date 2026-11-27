@@ -6,6 +6,8 @@
  * MASCARADO ("João S.", "(31) ••••-7777"). Nome completo, e-mail e telefone nunca saem do job.
  *
  * De onde vem o Dommus (o primeiro que existir):
+ *   DOMMUS_SLUG + DOMMUS_DEV_KEY + DOMMUS_USER + DOMMUS_PASSWORD (ou DOMMUS_TOKEN)
+ *                      API pública do Dommus Prospecta (scripts/dommus-api.mjs)
  *   DOMMUS_API_URL     endpoint JSON que lista as oportunidades (se o Dommus liberar uma API)
  *     DOMMUS_API_TOKEN, DOMMUS_AUTH_HEADER (padrão Authorization), DOMMUS_AUTH_PREFIX (padrão "Bearer ")
  *   DOMMUS_EXPORT_URL  link privado do export (CSV, XLSX ou JSON). Aceita link do Google Drive/Planilhas.
@@ -23,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { createHmac } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
 import vm from 'node:vm';
+import { hasDommusApi, fromDommusApi } from './dommus-api.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ctx = { TextDecoder, console };
@@ -90,11 +93,11 @@ async function main() {
     sales: [], coverage: null,
   };
 
-  const source = process.env.DOMMUS_API_URL ? 'api' : (process.env.DOMMUS_EXPORT_URL || process.env.DOMMUS_FILE) ? 'export' : null;
-  if (!source) out.dommus.error = 'Dommus ainda não configurado (DOMMUS_EXPORT_URL ou DOMMUS_API_URL)';
+  const source = hasDommusApi() ? 'prospecta' : process.env.DOMMUS_API_URL ? 'api' : (process.env.DOMMUS_EXPORT_URL || process.env.DOMMUS_FILE) ? 'export' : null;
+  if (!source) out.dommus.error = 'Dommus ainda não configurado (secrets DOMMUS_SLUG, DOMMUS_DEV_KEY, DOMMUS_USER e DOMMUS_PASSWORD)';
   else {
     try {
-      const objs = source === 'api' ? await fromApi() : await fromExport();
+      const objs = source === 'prospecta' ? await fromDommusApi() : source === 'api' ? await fromApi() : await fromExport();
       let overrides = {};
       try { overrides = JSON.parse(process.env.DOMMUS_FIELD_MAP || '{}'); } catch (e) { console.warn('! DOMMUS_FIELD_MAP não é um JSON válido: usando o DE/PARA automático'); }
       const { records, map } = S.toRecords(objs, overrides);
