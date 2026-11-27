@@ -19,7 +19,8 @@ on:
         default: false
 
 permissions:
-  contents: read
+  # write: só para gravar o backup cifrado dos leads no branch backup-leads
+  contents: write
 
 concurrency:
   group: dashboard-vercel
@@ -83,12 +84,20 @@ jobs:
           key: meta-leads-v1-${{ github.run_id }}
           restore-keys: meta-leads-v1-
 
+      # O cache do GitHub some após 7 dias sem uso; o branch backup-leads guarda uma cópia
+      # cifrada permanente. Os dois são abertos e somados, então nenhum lead se perde.
       - name: Abrir cache dos leads
         if: ${{ env.USE_CACHE == 'true' }}
         env:
           CACHE_KEY: ${{ secrets.CACHE_KEY }}
         run: |
-          if [ -f .cache/leads.enc ]; then node scripts/cache-crypto.mjs decrypt .cache/leads.enc .cache/leads-prev.json; fi
+          mkdir -p .cache
+          if [ -f .cache/leads.enc ]; then node scripts/cache-crypto.mjs decrypt .cache/leads.enc .cache/leads-cache.json; fi
+          if git fetch -q --depth=1 origin backup-leads 2>/dev/null && git cat-file -e FETCH_HEAD:leads.enc 2>/dev/null; then
+            git show FETCH_HEAD:leads.enc > .cache/leads-backup.enc
+            node scripts/cache-crypto.mjs decrypt .cache/leads-backup.enc .cache/leads-backup.json
+          fi
+          node scripts/merge-leads.mjs .cache/leads-prev.json .cache/leads-cache.json .cache/leads-backup.json
 
       - name: Buscar dados da Meta Marketing API
         if: ${{ inputs.demo != true }}
@@ -107,10 +116,11 @@ jobs:
           node scripts/fetch-meta.mjs
 
       # Não derruba a publicação: sem permissão, o motivo aparece na aba Vendas
+      # META_LEADS_TOKEN (opcional): token só para os leads, para não trocar o token principal
       - name: Buscar leads dos formulários da Meta
         if: ${{ inputs.demo != true }}
         env:
-          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_ACCESS_TOKEN: ${{ secrets.META_LEADS_TOKEN || secrets.META_ACCESS_TOKEN }}
           META_PAGE_IDS: ${{ vars.META_PAGE_IDS }}
           META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
           PREV_LEADS: .cache/leads-prev.json
@@ -121,6 +131,11 @@ jobs:
       - name: Cruzar leads com as vendas do Dommus
         if: ${{ inputs.demo != true }}
         env:
+          DOMMUS_SLUG: ${{ vars.DOMMUS_SLUG || secrets.DOMMUS_SLUG }}
+          DOMMUS_DEV_KEY: ${{ secrets.DOMMUS_DEV_KEY }}
+          DOMMUS_USER: ${{ secrets.DOMMUS_USER }}
+          DOMMUS_PASSWORD: ${{ secrets.DOMMUS_PASSWORD }}
+          DOMMUS_TOKEN: ${{ secrets.DOMMUS_TOKEN }}
           DOMMUS_API_URL: ${{ secrets.DOMMUS_API_URL }}
           DOMMUS_API_TOKEN: ${{ secrets.DOMMUS_API_TOKEN }}
           DOMMUS_AUTH_HEADER: ${{ vars.DOMMUS_AUTH_HEADER }}
@@ -146,6 +161,26 @@ jobs:
         with:
           path: .cache/leads.enc
           key: meta-leads-v1-${{ github.run_id }}
+
+      # Backup permanente (só na main): o arquivo cifrado vai para o branch backup-leads.
+      # Também mantém o repositório ativo, para o GitHub não desligar a rotina agendada.
+      - name: Gravar backup cifrado dos leads
+        if: ${{ env.USE_CACHE == 'true' && github.ref == 'refs/heads/main' && hashFiles('.cache/leads.enc') != '' }}
+        run: |
+          dir="$(mktemp -d)"
+          if git fetch -q --depth=1 origin backup-leads 2>/dev/null; then
+            git worktree add -q "$dir" FETCH_HEAD && git -C "$dir" switch -q -C backup-leads
+          else
+            git worktree add -q --orphan -b backup-leads "$dir"
+          fi
+          cp .cache/leads.enc "$dir/leads.enc"
+          printf 'Backup cifrado (AES-256-GCM) dos leads dos formulários da Meta.\nSó abre com o secret CACHE_KEY. Gravado pelo workflow sync-meta.yml.\n' > "$dir/README.md"
+          cd "$dir"
+          git add leads.enc README.md
+          if git diff --cached --quiet; then echo "• Backup sem mudanças"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Backup dos leads $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q origin HEAD:backup-leads
+          echo "• Backup gravado no branch backup-leads"
 
       - name: Cifrar cache
         if: ${{ env.USE_CACHE == 'true' }}
@@ -193,3 +228,19 @@ jobs:
         run: |
           url="$(npx --yes vercel@48 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN")"
           echo "Dashboard: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      # Alerta: se a busca de leads falhar, o job fica vermelho (e o GitHub avisa por e-mail).
+      # O dashboard já foi publicado acima, então a falha não derruba nada.
+      - name: Conferir leads dos formulários
+        if: ${{ inputs.demo != true }}
+        run: |
+          [ -f build/leads.json ] || exit 0
+          node -e '
+            const s = (JSON.parse(require("fs").readFileSync("build/leads.json","utf8")).status) || {};
+            if (s.error) { console.log("::error title=Leads da Meta não baixados::" + s.error); process.exit(1); }
+            console.log("• Leads OK: " + (s.fetched || 0) + " baixados agora");'
+          [ -f build/sales.json ] || exit 0
+          node -e '
+            const d = (JSON.parse(require("fs").readFileSync("build/sales.json","utf8")).dommus) || {};
+            if (d.source && d.error) { console.log("::error title=Dommus não lido::" + d.error); process.exit(1); }
+            if (d.connected) console.log("• Dommus OK: " + d.records + " oportunidades");'

@@ -174,7 +174,11 @@ O token atual só lê números (`ads_read`). Para ler cada lead:
 2. **Gere um novo token** com `ads_read`, `leads_retrieval`, `pages_show_list`, `pages_read_engagement` e `pages_manage_ads`. Troque o secret `META_ACCESS_TOKEN`.
 3. Opcional: variável `META_PAGE_IDS` com os IDs das Páginas, se o token tiver acesso a outras.
 
+**Alternativa sem trocar o token principal:** crie o secret `META_LEADS_TOKEN` com um token que leia os leads (por exemplo, o seu token de usuário de longa duração, com `leads_retrieval`, `pages_show_list` e `pages_read_engagement`). Só a busca de leads usa esse token; os números do dashboard continuam com o `META_ACCESS_TOKEN`. Um token de usuário enxerga todas as Páginas que você administra, então defina também `META_PAGE_IDS` só com a Página da BNR. Token de usuário vence (o de longa duração dura cerca de 60 dias): quando vencer, a aba Vendas mostra o erro e os leads já baixados continuam no cache cifrado.
+
 > A Meta só devolve leads de até **90 dias**. Por isso o `CACHE_KEY` é importante: o histórico vai se acumulando no cache cifrado. Sem ele, as vendas de leads com mais de 90 dias só são ligadas por UTM ou pelo nome do anúncio/campanha no Dommus.
+
+> **Histórico permanente:** a cada execução na `main`, o arquivo cifrado dos leads também é gravado no branch `backup-leads` (AES-256-GCM, só abre com o `CACHE_KEY`). Se o cache do GitHub sumir, o histórico volta desse branch. Guarde uma cópia do `CACHE_KEY` num gerenciador de senhas: sem ele o backup não abre. Se a busca de leads falhar (token vencido, permissão removida), o job termina em vermelho depois de publicar o dashboard, e o GitHub avisa por e-mail.
 
 ### 2. Levar o Dommus até o dashboard
 
@@ -189,6 +193,21 @@ Escolha uma forma:
 | **API** | Se o Dommus liberar um endpoint, use os secrets `DOMMUS_API_URL` e `DOMMUS_API_TOKEN` (cabeçalho em `DOMMUS_AUTH_HEADER`, padrão `Authorization: Bearer`). | Todos |
 
 O DE/PARA das colunas é automático (aceita "Nome do Lead", "E-mail", "Telefone", "Etapa", "Data da Venda", "Valor da Venda", "Empreendimento"…). Se alguma coluna tiver outro nome, defina a variável `DOMMUS_FIELD_MAP`, por exemplo `{"stage":"Status Atual","value":"VGV Negociado","saleDate":"Data Assinatura"}`. Os campos são `name`, `email`, `ddd`, `phone`, `created`, `stage`, `stageType`, `saleDate`, `value`, `product`, `origin`, `media`, `campaign` e `utmContent`.
+
+### API pública do Dommus (automático)
+
+O Dommus Prospecta tem uma API pública ([documentação](https://documenter.getpostman.com/view/17793777/2s9YsT5o3C)). Com ela, cada sincronização busca todas as oportunidades com o lead (nome, e-mail, telefone, campanha, mídia, origem), a etapa, a data e o valor da venda, sem export.
+
+Secrets (Settings › Secrets and variables › Actions):
+
+| Secret | Valor |
+|---|---|
+| `DOMMUS_SLUG` | o identificador do cliente no Dommus (também pode ser variável) |
+| `DOMMUS_DEV_KEY` | a chave identificadora de desenvolvedor, fornecida pelo Dommus |
+| `DOMMUS_USER` | e-mail de um usuário do Dommus (de preferência um usuário só para a integração) |
+| `DOMMUS_PASSWORD` | a senha desse usuário |
+
+Quando esses secrets existem, a API tem prioridade sobre o export. No log, o passo "Cruzar leads com as vendas do Dommus" mostra só contagens e nomes de campos, nunca dados de clientes. Se o login falhar, o job termina em vermelho depois de publicar.
 
 ### 3. UTMs nos anúncios de landing page (comece hoje)
 
