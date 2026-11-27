@@ -1059,7 +1059,7 @@
     render();
   });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!document.documentElement.dataset.theme) render(); });
-  $('#copy-link').addEventListener('click', async () => { writeHash(); try { await navigator.clipboard.writeText(location.href); toast('Link copiado — quem abrir verá esta mesma visão'); } catch (e) { toast('Copie o endereço da barra do navegador'); } closePops(); });
+  $('#copy-link').addEventListener('click', async () => { const link = location.origin + location.pathname + location.search + viewHash(true); try { await navigator.clipboard.writeText(link); toast('Link copiado — quem abrir verá esta mesma visão'); } catch (e) { window.prompt('Copie o link desta visão:', link); } closePops(); });
   $('#export-csv').addEventListener('click', () => { exportCsv(); closePops(); });
   $('#csv-input').addEventListener('change', onCsvInput);
   $('#load-demo').addEventListener('click', () => { closePops(); useData(window.BNRDemo.build(), true); toast('Dados de demonstração carregados'); });
@@ -1099,18 +1099,21 @@
   function toast(msg, ms) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), ms || 2600); }
 
   // ------------------------------------------------------------------ URL hash (visão compartilhável)
-  function writeHash() {
+  // O período NÃO fica no endereço: abrir ou recarregar a página sempre começa em
+  // "Últimos 30 dias" (e baixa só os meses necessários). Só o link copiado leva o período.
+  function viewHash(withPeriod) {
     const p = new URLSearchParams();
-    if (state.preset !== 'last_30') p.set('p', state.preset);
-    if (state.preset === 'custom') { p.set('s', state.since); p.set('u', state.until); }
+    if (withPeriod && state.preset !== 'last_30') p.set('p', state.preset);
+    if (withPeriod && state.preset === 'custom') { p.set('s', state.since); p.set('u', state.until); }
     if (state.mode !== 'leads') p.set('m', state.mode);
     if (state.campaigns.size) p.set('c', [...state.campaigns].join(','));
     if (state.adsets.size) p.set('as', [...state.adsets].join(','));
     if (state.status !== 'all') p.set('st', state.status);
     if (state.q) p.set('q', state.q);
     const qs = p.toString();
-    history.replaceState(null, '', location.pathname + location.search + '#/' + PAGES[state.page].slug + (qs ? '?' + qs : ''));
+    return '#/' + PAGES[state.page].slug + (qs ? '?' + qs : '');
   }
+  function writeHash() { history.replaceState(null, '', location.pathname + location.search + viewHash(false)); }
   function readHash() {
     const h = location.hash.replace(/^#\/?/, '');
     let [slug, qs] = h.split('?');
