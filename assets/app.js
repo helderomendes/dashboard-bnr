@@ -59,7 +59,7 @@
     mode: store.get('mode', 'leads'),
     campaigns: new Set(), adsets: new Set(), status: 'all', q: '',
     gran: 'day', granAuto: true, share: 'res', bd: 'res',
-    rankSort: 'cpl', rankLimit: 8, rankScope: store.get('rankScope', 'active'),
+    rankSort: 'cpl', rankLimit: 8, rankScope: store.get('rankScope', 'active'), goalAuto: store.get('goalAuto', true),
     minRes: store.get('minRes', 3), goal: store.get('goal', null),
     tableView: 'tree', sort: { key: 'res', dir: -1 }, expanded: new Set(),
   };
@@ -112,6 +112,9 @@
       if (!data.adsets[a.adsetId]) data.adsets[a.adsetId] = { name: '(conjunto ' + a.adsetId + ')', status: 'UNKNOWN', campaignId: a.campaignId };
       if (!data.campaigns[a.campaignId]) data.campaigns[a.campaignId] = { name: '(campanha ' + a.campaignId + ')', status: 'UNKNOWN' };
       a._s = norm(a.name + ' ' + data.adsets[a.adsetId].name + ' ' + data.campaigns[a.campaignId].name);
+      // objetivo do anúncio = objetivo do conjunto (leads, conversas ou outro); sem informação, não filtra
+      const sg = data.adsets[a.adsetId].goal, ob = data.campaigns[a.campaignId].objective;
+      a.goal = sg || (ob === 'OUTCOME_LEADS' || ob === 'LEAD_GENERATION' ? 'leads' : ob === 'MESSAGES' ? 'msgs' : 'unknown');
     }
     for (const [id, s] of Object.entries(data.adsets)) s.id = id;
     for (const [id, c] of Object.entries(data.campaigns)) c.id = id;
@@ -120,6 +123,14 @@
   }
   const isActive = (s) => s === 'ACTIVE';
 
+  // Filtro inteligente por objetivo: no modo Leads só entram anúncios que buscam lead;
+  // no modo Conversas, só os de conversa. "Todos" mostra tudo, cada um pelo seu resultado.
+  const goalOk = (a) => !state.goalAuto || state.mode === 'all' || a.goal === 'unknown' || a.goal === state.mode;
+  const goalName = { leads: 'leads', msgs: 'conversas', other: 'outros objetivos' };
+  function hiddenByGoal() {
+    if (!state.goalAuto || state.mode === 'all') return 0;
+    return Object.values(state.data.ads).filter((a) => a.goal !== 'unknown' && a.goal !== state.mode && (!state.campaigns.size || state.campaigns.has(a.campaignId))).length;
+  }
   function allowedAds() {
     const d = state.data; const q = norm(state.q).trim();
     const set = new Set();
@@ -128,18 +139,21 @@
       if (state.adsets.size && !state.adsets.has(a.adsetId)) continue;
       if (state.status === 'active' && !isActive(a.status)) continue;
       if (state.status === 'inactive' && isActive(a.status)) continue;
+      if (!goalOk(a)) continue;
       if (q && !q.split(/\s+/).every((w) => a._s.includes(w))) continue;
       set.add(a.id);
     }
     return set;
   }
   const blank = () => ({ spend: 0, imp: 0, clk: 0, lclk: 0, leads: 0, msgs: 0, days: 0 });
-  function add(m, r, C) {
+  function add(m, r, C, ad) {
     m.spend += r[C.spend] || 0; m.imp += r[C.imp] || 0; m.clk += r[C.clk] || 0;
     m.lclk += r[C.lclk] || 0; m.leads += r[C.leads] || 0; m.msgs += r[C.msgs] || 0;
+    // resultado "do próprio objetivo" (usado no modo Todos): lead para quem busca lead, conversa para quem busca conversa
+    const g = ad && ad.goal; m.own = (m.own || 0) + (g === 'leads' ? r[C.leads] || 0 : g === 'msgs' ? r[C.msgs] || 0 : (r[C.leads] || 0) + (r[C.msgs] || 0));
   }
   function derive(m) {
-    const res = state.mode === 'leads' ? m.leads : state.mode === 'msgs' ? m.msgs : m.leads + m.msgs;
+    const res = state.mode === 'leads' ? m.leads : state.mode === 'msgs' ? m.msgs : (m.own != null ? m.own : m.leads + m.msgs);
     m.res = res;
     m.cpl = res > 0 ? m.spend / res : null;
     m.ctr = m.imp > 0 ? m.lclk / m.imp : null;
@@ -154,9 +168,10 @@
     for (const r of d.daily.rows) {
       const day = r[C.d];
       if (day < since || day > until || !allowed.has(r[C.ad])) continue;
-      const k = keyFn ? keyFn(r, d.ads[r[C.ad]]) : 'all';
+      const ad = d.ads[r[C.ad]];
+      const k = keyFn ? keyFn(r, ad) : 'all';
       let m = out.get(k); if (!m) out.set(k, (m = blank()));
-      add(m, r, C);
+      add(m, r, C, ad);
     }
     for (const m of out.values()) derive(m);
     return out;
@@ -306,6 +321,9 @@
     for (const id of state.adsets) chips.push(['s', id, 'Conjunto: ' + d.adsets[id].name]);
     if (state.q) chips.push(['q', '', 'Busca: “' + state.q + '”']);
     if (state.status !== 'all') chips.push(['st', '', state.status === 'active' ? 'Só ativos' : 'Só pausados']);
+    const hid = hiddenByGoal();
+    if (hid) chips.push(['g', '', `Só anúncios de ${goalName[state.mode]} · ${hid} de outros objetivos ocultos`]);
+    else if (!state.goalAuto && state.mode !== 'all') chips.push(['g', '', 'Todos os objetivos (filtro inteligente desligado)']);
     $('#chips').innerHTML = chips.map(([t, id, l]) => `<span class="chip" title="${esc(l)}"><span>${esc(l)}</span><button data-t="${t}" data-id="${esc(id)}" aria-label="Remover filtro">✕</button></span>`).join('') +
       (chips.length > 1 ? '<button class="linkbtn" id="clear-all">Limpar filtros</button>' : '');
     msCampaigns.refresh(); msAdsets.refresh();
@@ -454,7 +472,7 @@
       out.push(['good', 'star', d.ads[b.id].name, `Melhor ${cplLabel()}: ${F.money(b.cpl)} · ${F.int(b.res)} ${resLabel().toLowerCase()}`, b.id]);
     }
     const thresh = Math.max((avg || 0) * 1.5, 50);
-    ads.filter((a) => a.res === 0 && a.spend >= thresh).sort((a, b) => b.spend - a.spend).slice(0, 2)
+    ads.filter((a) => a.res === 0 && a.spend >= thresh && d.ads[a.id].goal !== 'other').sort((a, b) => b.spend - a.spend).slice(0, 2)
       .forEach((a) => out.push(['bad', 'fire', d.ads[a.id].name, `${F.money(a.spend)} gastos sem nenhum ${singular()}`, a.id]));
     if (qualified.length > 2 && avg) {
       const w = qualified[qualified.length - 1];
@@ -636,7 +654,7 @@
         </div>
         <div class="ad-info">
           <div class="ad-name" title="${esc(ad.name)}">${hl(ad.name)}</div>
-          <div class="crumb" title="${esc(d.campaigns[ad.campaignId].name + ' › ' + d.adsets[ad.adsetId].name)}">${esc(d.campaigns[ad.campaignId].name)} › ${esc(d.adsets[ad.adsetId].name)}</div>
+          <div class="crumb" title="${esc(d.campaigns[ad.campaignId].name + ' › ' + d.adsets[ad.adsetId].name)}">${ad.goal === 'msgs' ? '<span class="goal-tag">Conversas</span>' : ad.goal === 'other' ? '<span class="goal-tag">Alcance/vídeo</span>' : ''}${esc(d.campaigns[ad.campaignId].name)} › ${esc(d.adsets[ad.adsetId].name)}</div>
           <div class="ad-metrics">
             <div><span>${cplLabel()}</span>${cplChip(a.cpl)}</div>
             <div><span>${resLabel()}</span><strong class="num">${F.int(a.res)}</strong></div>
@@ -995,6 +1013,7 @@
     if (b.dataset.t === 'c') state.campaigns.delete(b.dataset.id);
     if (b.dataset.t === 's') state.adsets.delete(b.dataset.id);
     if (b.dataset.t === 'q') state.q = '';
+    if (b.dataset.t === 'g') { state.goalAuto = !state.goalAuto; store.set('goalAuto', state.goalAuto); }
     if (b.dataset.t === 'st') state.status = 'all';
     render();
   });

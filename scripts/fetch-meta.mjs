@@ -53,8 +53,9 @@ async function request(url, attempt = 0) {
   }
   if (body.error) {
     const { code, message, is_transient: transient } = body.error;
-    if ((transient || TRANSIENT.has(code) || res.status >= 500) && attempt < 6) {
-      const wait = Math.min(60000, 3000 * 2 ** attempt);
+    // limite de chamadas (17, 80004…) costuma precisar de alguns minutos para liberar
+    if ((transient || TRANSIENT.has(code) || res.status >= 500) && attempt < 9) {
+      const wait = Math.min(code === 17 || code >= 80000 ? 180000 : 60000, 5000 * 2 ** attempt);
       console.warn(`  ↻ limite/erro temporário da Meta (${code}): aguardando ${wait / 1000}s…`);
       await sleep(wait);
       return request(url, attempt + 1);
@@ -108,6 +109,21 @@ const round2 = (n) => Math.round(n * 100) / 100;
 // A API de Insights não quebra resultados por cidade (o mais fino é "region", o estado).
 // Por isso guardamos as cidades segmentadas em cada conjunto; o dashboard soma por elas.
 const UF = { Acre: 'AC', Alagoas: 'AL', 'Amapá': 'AP', Amazonas: 'AM', Bahia: 'BA', 'Ceará': 'CE', 'Distrito Federal': 'DF', 'Espírito Santo': 'ES', 'Goiás': 'GO', 'Maranhão': 'MA', 'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG', 'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR', Pernambuco: 'PE', 'Piauí': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN', 'Rio Grande do Sul': 'RS', 'Rondônia': 'RO', Roraima: 'RR', 'Santa Catarina': 'SC', 'São Paulo': 'SP', Sergipe: 'SE', Tocantins: 'TO' };
+// Objetivo real do conjunto: o que ele busca entregar. Evita cobrar lead de anúncio de conversa
+// (WhatsApp/Direct/Messenger) ou de alcance/vídeo.
+const MSG_GOALS = new Set(['CONVERSATIONS', 'REPLIES', 'MESSAGING_PURCHASE_CONVERSION', 'MESSAGING_APPOINTMENT_CONVERSION']);
+const MSG_DEST = new Set(['WHATSAPP', 'MESSENGER', 'INSTAGRAM_DIRECT', 'MESSAGING_MESSENGER_WHATSAPP', 'MESSAGING_INSTAGRAM_DIRECT_MESSENGER', 'MESSAGING_INSTAGRAM_DIRECT_WHATSAPP', 'MESSAGING_INSTAGRAM_DIRECT_MESSENGER_WHATSAPP']);
+const LEAD_GOALS = new Set(['LEAD_GENERATION', 'QUALITY_LEAD', 'QUALITY_CALL']);
+const LEAD_EVENTS = new Set(['LEAD', 'COMPLETE_REGISTRATION', 'CONTACT', 'SUBMIT_APPLICATION', 'SCHEDULE']);
+function goalOf(s, campaign) {
+  const g = s.optimization_goal, dest = s.destination_type, ev = s.promoted_object && s.promoted_object.custom_event_type;
+  if (MSG_GOALS.has(g) || MSG_DEST.has(dest)) return 'msgs';
+  if (LEAD_GOALS.has(g) || dest === 'ON_AD' || (g === 'OFFSITE_CONVERSIONS' && LEAD_EVENTS.has(ev))) return 'leads';
+  const obj = campaign && campaign.objective;
+  if (obj === 'OUTCOME_LEADS' || obj === 'LEAD_GENERATION') return 'leads';
+  if (obj === 'MESSAGES') return 'msgs';
+  return 'other';
+}
 function audience(t) {
   if (!t) return undefined;
   const list = (x) => (Array.isArray(x) ? x : x ? Object.values(x) : []);
@@ -207,7 +223,7 @@ async function main() {
   console.log('• Estrutura (campanhas, conjuntos, anúncios)');
   const [campaigns, adsets, ads] = await Promise.all([
     all(`${ACCOUNT}/campaigns`, { fields: 'id,name,effective_status,objective', filtering }),
-    all(`${ACCOUNT}/adsets`, { fields: 'id,name,effective_status,campaign_id,optimization_goal,targeting', filtering }),
+    all(`${ACCOUNT}/adsets`, { fields: 'id,name,effective_status,campaign_id,optimization_goal,destination_type,promoted_object,targeting', filtering }),
     all(`${ACCOUNT}/ads`, { fields: 'id,name,effective_status,adset_id,campaign_id,created_time,creative{thumbnail_url,image_url,title,body,object_type,effective_object_story_id,instagram_permalink_url}', filtering, thumbnail_width: 640, thumbnail_height: 640 }),
   ]);
 
@@ -229,7 +245,7 @@ async function main() {
     data.daily.rows.push(...prev.daily.rows.filter((r) => keep(r[0])));
   }
   for (const c of campaigns) data.campaigns[c.id] = { name: c.name, status: c.effective_status, objective: c.objective };
-  for (const s of adsets) data.adsets[s.id] = { name: s.name, status: s.effective_status, campaignId: s.campaign_id, optimization: s.optimization_goal, geo: geoLabels(s.targeting), aud: audience(s.targeting) };
+  for (const s of adsets) data.adsets[s.id] = { name: s.name, status: s.effective_status, campaignId: s.campaign_id, optimization: s.optimization_goal, geo: geoLabels(s.targeting), aud: audience(s.targeting), destination: s.destination_type, goal: goalOf(s, data.campaigns[s.campaign_id]) };
   for (const a of ads) {
     const cr = a.creative || {};
     const fmt = { VIDEO: 'VÍDEO', PHOTO: 'IMAGEM', SHARE: 'LINK', STATUS: 'TEXTO', MULTI_SHARE: 'CARROSSEL' }[cr.object_type] || cr.object_type;
