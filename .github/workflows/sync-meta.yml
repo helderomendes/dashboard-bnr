@@ -28,7 +28,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A primeira carga do histórico completo (37 meses) leva uns 15 min; as seguintes usam o cache.
+    timeout-minutes: 60
     env:
       # Cache incremental só liga quando o secret CACHE_KEY existe. O repositório é público,
       # então o cache fica sempre cifrado (scripts/cache-crypto.mjs).
@@ -77,13 +78,13 @@ jobs:
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
-          DAYS: ${{ vars.DAYS || '180' }}
+          DAYS: ${{ vars.DAYS || '1200' }}
           REFRESH_DAYS: ${{ vars.REFRESH_DAYS || '28' }}
-          MAX_DAYS: ${{ vars.MAX_DAYS || '730' }}
+          MAX_DAYS: ${{ vars.MAX_DAYS || '3650' }}
           META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
           LEAD_ACTION_TYPES: ${{ vars.LEAD_ACTION_TYPES }}
           PREV: .cache/prev.json
-          OUT: .vercel/output/functions/dashboard.func/site/data/insights.json
+          OUT: .vercel/output/static/data/insights.json
         run: |
           mkdir -p "$(dirname "$OUT")"
           node scripts/fetch-meta.mjs
@@ -94,7 +95,7 @@ jobs:
           CACHE_KEY: ${{ secrets.CACHE_KEY }}
         run: |
           rm -f .cache/insights.enc .cache/prev.json
-          node scripts/cache-crypto.mjs encrypt .vercel/output/functions/dashboard.func/site/data/insights.json .cache/insights.enc
+          node scripts/cache-crypto.mjs encrypt .vercel/output/static/data/insights.json .cache/insights.enc
 
       - name: Salvar cache cifrado
         if: ${{ env.USE_CACHE == 'true' && hashFiles('.cache/insights.enc') != '' }}
@@ -103,65 +104,23 @@ jobs:
           path: .cache/insights.enc
           key: meta-insights-v1-${{ github.run_id }}
 
+      # Arquivos estáticos (sem função): o JSON do histórico completo passa do limite
+      # de 4,5 MB por resposta das funções da Vercel. Os cabeçalhos noindex vêm das rotas.
       - name: Montar o dashboard
         run: |
-          bundle=.vercel/output/functions/dashboard.func
-          mkdir -p "$bundle/site"
-          cp -r index.html assets "$bundle/site/"
-          cat > .vercel/output/config.json <<'JSON'
-          {"version":3,"routes":[{"src":"^/(.*)$","dest":"/dashboard?asset=$1"}]}
+          out=.vercel/output
+          mkdir -p "$out/static"
+          cp -r index.html assets "$out/static/"
+          printf 'User-agent: *\nDisallow: /\n' > "$out/static/robots.txt"
+          cat > "$out/config.json" <<'JSON'
+          {"version":3,"routes":[
+            {"src":"/(.*)","headers":{"X-Robots-Tag":"noindex, nofollow, noarchive","X-Content-Type-Options":"nosniff","Cache-Control":"public, max-age=0, must-revalidate"},"continue":true},
+            {"handle":"filesystem"},
+            {"src":"/(.*)","status":404}
+          ]}
           JSON
-          cat > "$bundle/.vc-config.json" <<'JSON'
-          {"runtime":"nodejs22.x","handler":"index.cjs","launcherType":"Nodejs"}
-          JSON
-          cat > "$bundle/index.cjs" <<'JS'
-          const { readFile } = require('node:fs/promises');
-          const { extname, join } = require('node:path');
-
-          const types = {
-            '.html': 'text/html; charset=utf-8',
-            '.css': 'text/css; charset=utf-8',
-            '.js': 'text/javascript; charset=utf-8',
-            '.json': 'application/json; charset=utf-8',
-            '.png': 'image/png',
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.webp': 'image/webp',
-            '.svg': 'image/svg+xml',
-            '.ico': 'image/x-icon',
-            '.woff2': 'font/woff2',
-          };
-
-          module.exports = async function dashboard(req, res) {
-            res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-            res.setHeader('Cache-Control', 'no-store');
-            res.setHeader('X-Content-Type-Options', 'nosniff');
-
-            if (req.method !== 'GET' && req.method !== 'HEAD') {
-              res.statusCode = 405;
-              res.setHeader('Allow', 'GET, HEAD');
-              return res.end();
-            }
-
-            const asset = new URL(req.url, 'http://localhost').searchParams.get('asset') || 'index.html';
-            const isAsset = /^assets\/(?:[\w-]+\/)*[\w.-]+$/.test(asset);
-            const contentType = types[extname(asset).toLowerCase()];
-            if ((!isAsset && asset !== 'index.html' && asset !== 'data/insights.json') || !contentType) {
-              res.statusCode = 404;
-              return res.end();
-            }
-
-            try {
-              const bytes = await readFile(join(__dirname, 'site', asset));
-              res.setHeader('Content-Type', contentType);
-              return res.end(req.method === 'HEAD' ? undefined : bytes);
-            } catch (error) {
-              res.statusCode = error.code === 'ENOENT' || error.code === 'EISDIR' ? 404 : 500;
-              return res.end();
-            }
-          };
-          JS
-          node --check "$bundle/index.cjs"
+          node -e "JSON.parse(require('fs').readFileSync('$out/config.json','utf8'))"
+          ls -la "$out/static" "$out/static/data" 2>/dev/null || true
 
       - name: Publicar na Vercel
         env:

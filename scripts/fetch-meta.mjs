@@ -7,7 +7,7 @@
  * Variáveis de ambiente:
  *   META_ACCESS_TOKEN   (obrigatória) token de Usuário do Sistema com permissão ads_read
  *   META_AD_ACCOUNT_ID  (obrigatória) ID da conta, com ou sem "act_" (ex.: act_1234567890)
- *   DAYS                dias de histórico (padrão 180)
+ *   DAYS                dias de histórico da primeira carga (padrão 1200; a Meta limita a 37 meses)
  *   META_API_VERSION    versão da Graph API (padrão v23.0)
  *   LEAD_ACTION_TYPES   lista separada por vírgula para sobrescrever o que conta como lead
  *   MSG_ACTION_TYPES    idem para conversas (padrão: conversas por mensagem iniciadas)
@@ -15,7 +15,7 @@
  *   PREV                JSON da sincronização anterior (cache). Se existir e for da mesma conta,
  *                       só os últimos REFRESH_DAYS são baixados de novo; o resto é reaproveitado.
  *   REFRESH_DAYS        dias recentes sempre rebaixados, porque a Meta ainda ajusta atribuição (padrão 28)
- *   MAX_DAYS            teto do histórico acumulado (padrão 730)
+ *   MAX_DAYS            teto do histórico acumulado no cache (padrão 3650)
  */
 import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -24,11 +24,11 @@ const TOKEN = process.env.META_ACCESS_TOKEN;
 const RAW_ACCOUNT = (process.env.META_AD_ACCOUNT_ID || '').trim();
 const ACCOUNT = RAW_ACCOUNT.startsWith('act_') ? RAW_ACCOUNT : `act_${RAW_ACCOUNT}`;
 const VERSION = process.env.META_API_VERSION || 'v23.0';
-const DAYS = Math.max(1, parseInt(process.env.DAYS || '180', 10));
+const DAYS = Math.max(1, parseInt(process.env.DAYS || '1200', 10));
 const OUT = process.env.OUT || 'data/insights.json';
 const PREV = process.env.PREV || '';
 const REFRESH_DAYS = Math.max(1, parseInt(process.env.REFRESH_DAYS || '28', 10));
-const MAX_DAYS = Math.max(DAYS, parseInt(process.env.MAX_DAYS || '730', 10));
+const MAX_DAYS = Math.max(DAYS, parseInt(process.env.MAX_DAYS || '3650', 10));
 const BASE = `https://graph.facebook.com/${VERSION}`;
 
 const LEAD_TYPES = (process.env.LEAD_ACTION_TYPES || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -180,7 +180,11 @@ async function main() {
   const until = iso(new Date());
   const floor = daysAgo(MAX_DAYS - 1);
   const prev = await loadPrev();
+  // A Meta só responde até 37 meses para trás; consultar antes disso dá erro.
+  const limitD = new Date(); limitD.setUTCMonth(limitD.getUTCMonth() - 37); limitD.setUTCDate(limitD.getUTCDate() + 1);
+  const metaLimit = iso(limitD);
   let since = daysAgo(DAYS - 1);
+  if (since < metaLimit) since = metaLimit;
   let fetchSince = since;
   if (prev) {
     // reaproveita os dias antigos e rebaixa só a janela recente
@@ -190,6 +194,7 @@ async function main() {
     since = prev.range.since < since ? prev.range.since : since;
     if (since < floor) since = floor;
     if (fetchSince < since) fetchSince = since;
+    if (fetchSince < metaLimit) fetchSince = metaLimit;
   }
   console.log(prev
     ? `▶ Sincronizando ${ACCOUNT}: histórico ${since} a ${until}, baixando ${fetchSince} a ${until} (cache reaproveitado; API ${VERSION})`
@@ -246,7 +251,8 @@ async function main() {
     data.daily.rows.push([r.date_start, r.ad_id, round2(+r.spend || 0), +r.impressions || 0, +r.clicks || 0, +r.inline_link_clicks || 0, leadsOf(m), msgsOf(m)]);
   }
 
-  const BD = { placement: 'publisher_platform,platform_position', age_gender: 'age,gender', region: 'region' };
+  // Sem 'region' (estado): o dashboard mostra cidades pela segmentação dos conjuntos.
+  const BD = { placement: 'publisher_platform,platform_position', age_gender: 'age,gender' };
   for (const [name, breakdowns] of Object.entries(BD)) {
     console.log(`• Quebra: ${name}`);
     try {

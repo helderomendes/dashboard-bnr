@@ -77,7 +77,7 @@ No repositório: **Settings › Secrets and variables › Actions › New reposi
 | `VERCEL_PROJECT_ID` | o Project ID (`prj_…`) |
 | `CACHE_KEY` | opcional: frase aleatória com 40 ou mais caracteres. Liga o cache incremental |
 
-Variáveis opcionais (aba *Variables*): `DAYS` (histórico da primeira carga, padrão 180), `REFRESH_DAYS` (dias recentes rebaixados a cada execução, padrão 28), `MAX_DAYS` (teto do histórico acumulado, padrão 730), `META_API_VERSION` (padrão `v23.0`) e `LEAD_ACTION_TYPES` (veja "O que conta como lead").
+Variáveis opcionais (aba *Variables*): `DAYS` (histórico da primeira carga, padrão 1200 dias, limitado pela Meta a 37 meses), `REFRESH_DAYS` (dias recentes rebaixados a cada execução, padrão 28), `MAX_DAYS` (teto do histórico acumulado no cache, padrão 3650), `META_API_VERSION` (padrão `v23.0`) e `LEAD_ACTION_TYPES` (veja "O que conta como lead").
 
 #### Cache incremental
 
