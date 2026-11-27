@@ -59,7 +59,7 @@
     mode: store.get('mode', 'leads'),
     campaigns: new Set(), adsets: new Set(), status: 'all', q: '',
     gran: 'day', granAuto: true, share: 'res', bd: 'res',
-    rankSort: 'cpl', rankLimit: 8,
+    rankSort: 'cpl', rankLimit: 8, rankScope: store.get('rankScope', 'active'),
     minRes: store.get('minRes', 3), goal: store.get('goal', null),
     tableView: 'tree', sort: { key: 'res', dir: -1 }, expanded: new Set(),
   };
@@ -573,24 +573,34 @@
   function renderRanking() {
     const d = state.data;
     const byAd = aggregate(state.since, state.until, allowed, (r) => r[d._c.ad]);
-    let ads = [...byAd.entries()].filter(([, m]) => m.spend > 0).map(([id, m]) => Object.assign({ id }, m));
-    const minR = state.minRes;
+    // "Ativos": todo anúncio ativo entra, mesmo sem lead ou sem gasto no período.
+    // "Todos": qualquer anúncio que veiculou no período, ativo ou não.
+    const scope = state.rankScope;
+    const ids = new Set(scope === 'active' ? [...allowed].filter((id) => isActive(d.ads[id].status)) : [...byAd.keys()].filter((id) => byAd.get(id).spend > 0));
+    let ads = [...ids].map((id) => Object.assign({ id }, byAd.get(id) || derive(blank())));
+    const minR = Math.max(1, state.minRes);
     const s = state.rankSort;
-    if (s === 'cpl') ads = ads.filter((a) => a.res >= Math.max(1, minR)).sort((a, b) => a.cpl - b.cpl);
-    else if (s === 'worst') ads = ads.sort((a, b) => (b.cpl ?? b.spend * 1e6) - (a.cpl ?? a.spend * 1e6));
-    else if (s === 'res') ads.sort((a, b) => b.res - a.res || a.spend - b.spend);
-    else if (s === 'spend') ads.sort((a, b) => b.spend - a.spend);
-    else if (s === 'ctr') ads = ads.filter((a) => a.imp >= 1000).sort((a, b) => b.ctr - a.ctr);
-    $('#rank-sub').textContent = s === 'cpl' ? `Menor ${cplLabel()} entre anúncios com pelo menos ${Math.max(1, minR)} ${resLabel().toLowerCase()} · média da conta ${F.money(cur.cpl)}` : `${ads.length} anúncios com veiculação no período`;
+    const by = (f) => (a, b) => f(a, b) || b.spend - a.spend;
+    const ok = (a) => a.res >= minR;
+    if (s === 'cpl') ads.sort(by((a, b) => (ok(b) - ok(a)) || (ok(a) ? a.cpl - b.cpl : b.res - a.res)));
+    else if (s === 'worst') ads.sort(by((a, b) => (b.cpl ?? (b.spend ? b.spend * 1e6 : -1)) - (a.cpl ?? (a.spend ? a.spend * 1e6 : -1))));
+    else if (s === 'res') ads.sort(by((a, b) => b.res - a.res));
+    else if (s === 'spend') ads.sort(by((a, b) => 0));
+    else if (s === 'ctr') ads.sort(by((a, b) => ((b.imp >= 1000) - (a.imp >= 1000)) || (b.ctr || 0) - (a.ctr || 0)));
+    const ranked = s === 'cpl' ? ads.filter(ok).length : ads.length;
+    const what = scope === 'active' ? `${ads.length} anúncios ativos` : `${ads.length} anúncios com veiculação no período`;
+    $('#rank-sub').textContent = s === 'cpl'
+      ? `${what} · ${ranked} com pelo menos ${minR} ${resLabel().toLowerCase()} entram no ranking de ${cplLabel()} · média da conta ${F.money(cur.cpl)}`
+      : what;
     const list = ads.slice(0, state.rankLimit);
     $('#rank-more').classList.toggle('hidden', ads.length <= state.rankLimit);
-    if (!list.length) { $('#ranking').innerHTML = `<div class="empty" style="grid-column:1/-1">Nenhum anúncio atende ao critério. Reduza o “mín. resultados” ou amplie o período.</div>`; return; }
+    if (!list.length) { $('#ranking').innerHTML = `<div class="empty" style="grid-column:1/-1">${scope === 'active' ? 'Nenhum anúncio ativo com os filtros atuais.' : 'Nenhum anúncio veiculou no período.'}</div>`; return; }
     $('#ranking').innerHTML = list.map((a, i) => {
       const ad = d.ads[a.id];
       const img = ad.thumb || ad.image;
       return `<button class="ad-card" data-ad="${esc(a.id)}">
         <div class="ad-thumb" style="${img ? `background-image:url('${esc(img)}')` : ''}">
-          <span class="ad-rank ${i === 0 && (s === 'cpl' || s === 'res') ? 'gold' : ''}">#${i + 1}</span>
+          <span class="ad-rank ${i === 0 && (s === 'cpl' || s === 'res') && a.res > 0 ? 'gold' : ''}">${s === 'cpl' && !ok(a) ? (a.spend ? 'Poucos ' + esc(resLabel().toLowerCase()) : 'Sem gasto') : '#' + (i + 1)}</span>
           <span class="ad-status">${statusPill(ad.status)}</span>
         </div>
         <div class="ad-info">
@@ -958,6 +968,8 @@
     render();
   });
   $('#rank-sort').addEventListener('change', (e) => { state.rankSort = e.target.value; state.rankLimit = 8; renderRanking(); });
+  $('#rank-scope').value = state.rankScope;
+  $('#rank-scope').addEventListener('change', (e) => { state.rankScope = e.target.value; store.set('rankScope', state.rankScope); state.rankLimit = 8; renderRanking(); });
   $('#min-res').addEventListener('change', (e) => { state.minRes = Math.max(0, +e.target.value || 0); store.set('minRes', state.minRes); render(); });
   $('#cpl-goal').addEventListener('change', (e) => { state.goal = +e.target.value > 0 ? +e.target.value : null; store.set('goal', state.goal); render(); });
   $('#top-sort').addEventListener('change', (e) => { state.topSort = e.target.value; renderTopAds(); });

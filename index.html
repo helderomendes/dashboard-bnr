@@ -181,6 +181,10 @@
           <div class="card-head">
             <div><h2>Ranking de criativos</h2><p id="rank-sub"></p></div>
             <div class="card-actions">
+              <select id="rank-scope" class="select" aria-label="Quais anúncios mostrar">
+                <option value="active">Anúncios ativos</option>
+                <option value="all">Todos com veiculação</option>
+              </select>
               <select id="rank-sort" class="select" aria-label="Ordenar">
                 <option value="cpl">Menor CPL</option>
                 <option value="res">Mais leads</option>
@@ -188,7 +192,7 @@
                 <option value="ctr">Maior CTR</option>
                 <option value="worst">Pior CPL</option>
               </select>
-              <label class="field" title="Anúncios com menos leads que isso não entram no ranking de CPL">Mín. leads <input type="number" id="min-res" min="0" step="1" value="3" /></label>
+              <label class="field" title="Na ordem por CPL, anúncios com menos leads que isso ficam no fim da lista">Mín. leads <input type="number" id="min-res" min="0" step="1" value="3" /></label>
               <label class="field" title="Verde até a meta, amarelo até 30% acima, vermelho acima disso">Meta CPL <input type="number" id="cpl-goal" min="0" step="1" placeholder="auto" /></label>
             </div>
           </div>
