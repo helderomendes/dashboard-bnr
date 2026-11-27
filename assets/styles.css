@@ -105,7 +105,9 @@ a { color: var(--primary); }
 .side-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; font-size: 21px; font-weight: 600; letter-spacing: -.02em; padding-left: 8px; }
 .side-brand b { font-weight: 700; opacity: .7; }
 /* Logo no topo, só no celular (lá a barra lateral vira o menu de baixo) */
-.m-brand { display: none; }
+.m-brand { display: none; text-decoration: none; }
+.brand-card, .m-brand { cursor: pointer; text-decoration: none; }
+.brand-card:focus-visible, .m-brand:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .m-brand img { height: 30px; width: auto; display: block; }
 .m-brand .logo-on-dark { display: none; }
 :root[data-theme="dark"] .m-brand .logo-on-light { display: none; }

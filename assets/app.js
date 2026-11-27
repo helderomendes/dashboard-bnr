@@ -1005,6 +1005,7 @@
   $('#cpl-goal').addEventListener('change', (e) => { state.goal = +e.target.value > 0 ? +e.target.value : null; store.set('goal', state.goal); render(); });
   $('#top-sort').addEventListener('change', (e) => { state.topSort = e.target.value; renderTopAds(); });
   $('#theme-row').addEventListener('click', () => $('#theme-btn').click());
+  $$('.brand-card, .m-brand').forEach((a) => a.addEventListener('click', () => { if (state.page === 'overview') window.scrollTo({ top: 0, behavior: 'smooth' }); }));
   window.addEventListener('hashchange', () => { const pg = pageFromHash(); if (pg !== state.page) { state.page = pg; closePops(); render(); window.scrollTo(0, 0); } });
   document.addEventListener('keydown', (e) => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.list-row[data-ad], th[data-k]')) { e.preventDefault(); e.target.click(); }
