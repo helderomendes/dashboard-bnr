@@ -178,6 +178,8 @@ O token atual só lê números (`ads_read`). Para ler cada lead:
 
 > A Meta só devolve leads de até **90 dias**. Por isso o `CACHE_KEY` é importante: o histórico vai se acumulando no cache cifrado. Sem ele, as vendas de leads com mais de 90 dias só são ligadas por UTM ou pelo nome do anúncio/campanha no Dommus.
 
+> **Histórico permanente:** a cada execução na `main`, o arquivo cifrado dos leads também é gravado no branch `backup-leads` (AES-256-GCM, só abre com o `CACHE_KEY`). Se o cache do GitHub sumir, o histórico volta desse branch. Guarde uma cópia do `CACHE_KEY` num gerenciador de senhas: sem ele o backup não abre. Se a busca de leads falhar (token vencido, permissão removida), o job termina em vermelho depois de publicar o dashboard, e o GitHub avisa por e-mail.
+
 ### 2. Levar o Dommus até o dashboard
 
 O Dommus não tem uma API de leitura documentada. O que existe é o **export**: no Prospecta, a Lista de Oportunidades / Pesquisa Geral, e no Vende, **Lupa › Relatório de Base Completa › Exportar Tabela**. Marque ao menos nome, e-mail, telefone (e DDD), data de cadastro, etapa/status, data da venda, valor, empreendimento, origem, mídia e campanha.
