@@ -32,6 +32,7 @@
     <nav class="nav" id="nav">
       <a href="#/visao-geral" data-page="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg><span>Visão geral</span><em>Geral</em></a>
       <a href="#/origem" data-page="origin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="12" r="2"/><path d="M7 6c6 0 5 6 10 6M7 18c6 0 5-6 10-6"/></svg><span>Origem dos leads</span><em>Origem</em></a>
+      <a href="#/vendas" data-page="sales"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M10 20v-5.5h4V20"/></svg><span>Vendas</span><em>Vendas</em></a>
       <a href="#/anuncios" data-page="ads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 9"/></svg><span>Anúncios</span><em>Anúncios</em></a>
       <a href="#/campanhas" data-page="campaigns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Campanhas</span><em>Campanhas</em></a>
       <a href="#/publico" data-page="audience"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.9.4 5 2.7 5 5.8"/></svg><span>Público</span><em>Público</em></a>
@@ -175,6 +176,47 @@
         </div>
       </section>
 
+      <!-- ---------- VENDAS ---------- -->
+      <section class="view" data-view="sales" hidden>
+        <article class="card sales-status" id="sales-status"></article>
+        <div id="sales-main" class="view">
+          <div class="kpis" id="sales-kpis"></div>
+          <div class="mini-stats" id="sales-mini"></div>
+          <div class="grid g-2e">
+            <article class="card">
+              <div class="card-head"><div><h2>Do lead à venda</h2><p>O que aconteceu no Dommus com os leads que chegaram no período</p></div></div>
+              <div class="funnel" id="sales-funnel"></div>
+            </article>
+            <article class="card">
+              <div class="card-head"><div><h2>Como cada venda foi ligada ao anúncio</h2><p>Vendas fechadas no período, pela forma de equivalência</p></div></div>
+              <div class="links" id="sales-links"></div>
+            </article>
+          </div>
+          <article class="card flush">
+            <div class="card-head"><div><h2>Anúncios que vendem</h2><p>CPL barato nem sempre vira contrato. Clique no anúncio para ver o criativo.</p></div></div>
+            <div class="table-wrap" id="sales-ads"></div>
+          </article>
+          <article class="card">
+            <div class="card-head">
+              <div><h2>O caminho de cada venda</h2><p id="sales-list-sub"></p></div>
+              <div class="card-actions">
+                <select id="sales-show" class="select" aria-label="Quais vendas mostrar">
+                  <option value="all">Todas as vendas</option>
+                  <option value="ad">Só as que vieram de anúncio</option>
+                  <option value="none">Só as sem origem</option>
+                </select>
+                <div class="seg sm" id="attr-seg" role="group" aria-label="Qual lead leva o crédito da venda">
+                  <button data-a="first" aria-pressed="false" title="O crédito vai para o primeiro lead que a pessoa gerou">Primeiro lead</button>
+                  <button data-a="last" aria-pressed="true" title="O crédito vai para o último lead antes da venda">Último lead</button>
+                </div>
+              </div>
+            </div>
+            <div class="journeys" id="sales-list"></div>
+            <div class="more"><button class="btn" id="sales-more">Carregar mais</button></div>
+          </article>
+        </div>
+      </section>
+
       <!-- ---------- ANÚNCIOS ---------- -->
       <section class="view" data-view="ads" hidden>
         <article class="card">
@@ -288,6 +330,7 @@
 <script src="assets/vendor/echarts.min.js"></script>
 <script src="assets/demo.js"></script>
 <script src="assets/csv.js"></script>
+<script src="assets/sales-core.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

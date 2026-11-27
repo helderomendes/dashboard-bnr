@@ -404,6 +404,82 @@ mark { background: color-mix(in srgb, var(--primary) 22%, transparent); color: i
 .f-cost span { display: block; font-size: 11.5px; color: var(--text-3); }
 .f-cost strong { font-size: 15px; }
 
+/* ---------------- Vendas ---------------- */
+.sales-status { display: flex; flex-direction: column; gap: 14px; }
+.conn { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.conn > div { display: grid; grid-template-columns: 12px 1fr; column-gap: 10px; align-items: baseline; background: var(--surface-2); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.conn b { font-size: 13px; }
+.conn small { grid-column: 2; font-size: 12px; color: var(--text-3); line-height: 1.35; }
+.dot { width: 9px; height: 9px; border-radius: 50%; align-self: center; }
+.dot.on { background: var(--good); box-shadow: 0 0 0 3px var(--good-bg); }
+.dot.off { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg); }
+.import-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.import-row .muted { font-size: 12px; }
+.import-row .field input { width: 170px; }
+.demo-note { margin: 0; font-size: 12.5px; }
+.setup { background: var(--info-bg); color: var(--text); border-radius: 14px; padding: 14px 16px; font-size: 13px; line-height: 1.5; }
+.setup.sm { padding: 10px 12px; font-size: 12.5px; }
+.setup code { font-size: 12px; background: var(--surface); padding: 1px 5px; border-radius: 6px; }
+.mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.mini-stats > div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mini-stats span { font-size: 12px; color: var(--text-3); font-weight: 500; }
+.mini-stats strong { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.mini-stats small { font-size: 11.5px; color: var(--text-3); }
+.f-note { font-size: 12px; margin: 4px 0 0; }
+.links { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
+.link-row { display: grid; grid-template-columns: minmax(120px, 1.1fr) 1.4fr 44px auto; align-items: center; gap: 12px; font-size: 13px; }
+.lk-bar { height: 10px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.lk-bar i { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+.link-row b { text-align: right; }
+.sales-table thead th:first-child { min-width: 300px; }
+.sales-table tr.clickable { cursor: pointer; }
+.cell-ad { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: normal; }
+.cell-ad .nm { font-weight: 600; }
+.cell-ad .sub { font-size: 11.5px; color: var(--text-3); }
+.lr-thumb.sm { width: 36px; height: 36px; border-radius: 10px; }
+.journeys { display: flex; flex-direction: column; gap: 10px; }
+.journey { display: grid; grid-template-columns: 190px minmax(0, 1fr) 220px; gap: 16px; align-items: center; border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; background: var(--surface); }
+.j-client { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.j-client b { font-size: 14px; }
+.j-client small { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.j-client strong { font-size: 15px; margin-top: 4px; }
+.j-path { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.j-step { display: flex; align-items: center; gap: 10px; background: var(--surface-2); border: 1px solid transparent; border-radius: 12px; padding: 8px 12px; min-width: 0; text-align: left; font: inherit; color: inherit; }
+.j-step > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.j-step small { font-size: 11px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.j-step b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.j-step em { font-style: normal; font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.j-ad { flex: 1 1 0; cursor: pointer; }
+.j-path > div.j-step:not(.muted-step) { flex: none; }
+.j-ad:hover { border-color: var(--primary-200); background: var(--primary-50); }
+.j-step.won { background: var(--good-bg); }
+.j-step.won b { color: var(--good); }
+.muted-step { flex: 1 1 0; }
+.j-arrow { align-self: center; color: var(--text-3); font-size: 16px; flex: none; }
+.j-match { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.dr-sales { display: flex; flex-direction: column; gap: 6px; }
+.dr-sales div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; background: var(--surface-2); border-radius: 10px; padding: 8px 12px; font-size: 12.5px; }
+.dr-sales span { color: var(--text-3); }
+.dr-sales .num { color: var(--text); font-weight: 600; }
+@media (max-width: 1280px) {
+  .journey { grid-template-columns: 170px minmax(0, 1fr); }
+  .j-match { grid-column: 1 / -1; flex-direction: row; justify-content: flex-start; flex-wrap: wrap; }
+}
+@media (max-width: 1080px) { .mini-stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 760px) {
+  .conn { grid-template-columns: 1fr; }
+  .journey { grid-template-columns: 1fr; gap: 10px; padding: 12px; }
+  .j-path { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .j-path > .j-ad, .j-path > .muted-step { grid-column: 1 / -1; }
+  .j-arrow { display: none; }
+  .link-row { grid-template-columns: 1fr 40px; }
+  .link-row .lk-bar { grid-column: 1 / -1; grid-row: 2; }
+  .link-row .pill { display: none; }
+  .mini-stats { gap: 10px; }
+  .mini-stats strong { font-size: 17px; }
+  .import-row .muted { flex-basis: 100%; }
+}
+
 /* ---------------- Settings ---------------- */
 .settings-list { display: flex; flex-direction: column; gap: 8px; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); text-align: left; cursor: pointer; width: 100%; }

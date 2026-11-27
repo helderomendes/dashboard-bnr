@@ -73,6 +73,23 @@ jobs:
             echo "• Nenhum cache salvo ainda: esta execução baixa o histórico completo."
           fi
 
+      # Leads um por um (com nome, e-mail e telefone): cache próprio, também cifrado.
+      # A Meta só devolve leads de até 90 dias, então o cache guarda o histórico.
+      - name: Restaurar cache cifrado dos leads
+        if: ${{ env.USE_CACHE == 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/leads.enc
+          key: meta-leads-v1-${{ github.run_id }}
+          restore-keys: meta-leads-v1-
+
+      - name: Abrir cache dos leads
+        if: ${{ env.USE_CACHE == 'true' }}
+        env:
+          CACHE_KEY: ${{ secrets.CACHE_KEY }}
+        run: |
+          if [ -f .cache/leads.enc ]; then node scripts/cache-crypto.mjs decrypt .cache/leads.enc .cache/leads-prev.json; fi
+
       - name: Buscar dados da Meta Marketing API
         if: ${{ inputs.demo != true }}
         env:
@@ -88,6 +105,47 @@ jobs:
         run: |
           mkdir -p "$(dirname "$OUT")"
           node scripts/fetch-meta.mjs
+
+      # Não derruba a publicação: sem permissão, o motivo aparece na aba Vendas
+      - name: Buscar leads dos formulários da Meta
+        if: ${{ inputs.demo != true }}
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_PAGE_IDS: ${{ vars.META_PAGE_IDS }}
+          META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
+          PREV_LEADS: .cache/leads-prev.json
+          OUT: build/leads.json
+        run: node scripts/fetch-leads.mjs
+
+      # Gera build/sales.json só com clientes mascarados. build/leads.json (dados pessoais) nunca é publicado.
+      - name: Cruzar leads com as vendas do Dommus
+        if: ${{ inputs.demo != true }}
+        env:
+          DOMMUS_API_URL: ${{ secrets.DOMMUS_API_URL }}
+          DOMMUS_API_TOKEN: ${{ secrets.DOMMUS_API_TOKEN }}
+          DOMMUS_AUTH_HEADER: ${{ vars.DOMMUS_AUTH_HEADER }}
+          DOMMUS_EXPORT_URL: ${{ secrets.DOMMUS_EXPORT_URL }}
+          DOMMUS_FIELD_MAP: ${{ vars.DOMMUS_FIELD_MAP }}
+          SALES_KEY: ${{ secrets.SALES_KEY }}
+          LEADS: build/leads.json
+          INSIGHTS: build/insights.json
+          OUT: build/sales.json
+        run: node scripts/build-sales.mjs
+
+      - name: Cifrar cache dos leads
+        if: ${{ env.USE_CACHE == 'true' && hashFiles('build/leads.json') != '' }}
+        env:
+          CACHE_KEY: ${{ secrets.CACHE_KEY }}
+        run: |
+          rm -f .cache/leads.enc .cache/leads-prev.json
+          node scripts/cache-crypto.mjs encrypt build/leads.json .cache/leads.enc
+
+      - name: Salvar cache cifrado dos leads
+        if: ${{ env.USE_CACHE == 'true' && hashFiles('.cache/leads.enc') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/leads.enc
+          key: meta-leads-v1-${{ github.run_id }}
 
       - name: Cifrar cache
         if: ${{ env.USE_CACHE == 'true' }}
@@ -114,6 +172,8 @@ jobs:
           printf 'User-agent: *\nDisallow: /\n' > "$out/static/robots.txt"
           # Dados em partes mensais: o dashboard baixa só os meses do período visto
           if [ -f build/insights.json ]; then node scripts/split-data.mjs build/insights.json "$out/static/data"; fi
+          # Vendas: só o arquivo mascarado. O leads.json (com contatos) fica fora de propósito.
+          if [ -f build/sales.json ]; then mkdir -p "$out/static/data"; cp build/sales.json "$out/static/data/sales.json"; fi
           cat > "$out/config.json" <<'JSON'
           {"version":3,"routes":[
             {"src":"/(.*)","headers":{"X-Robots-Tag":"noindex, nofollow, noarchive","X-Content-Type-Options":"nosniff","Cache-Control":"public, max-age=0, must-revalidate"},"continue":true},

@@ -62,6 +62,7 @@
     rankSort: 'cpl', rankLimit: 8, rankScope: store.get('rankScope', 'active'), goalAuto: store.get('goalAuto', true),
     minRes: store.get('minRes', 3), goal: store.get('goal', null),
     tableView: 'tree', sort: { key: 'res', dir: -1 }, expanded: new Set(),
+    sales: null, attr: store.get('attr', 'last'), salesShow: 'all', salesLimit: 12,
   };
   const RES_LABEL = { leads: 'Leads', msgs: 'Conversas', all: 'Resultados' };
   const resLabel = () => RES_LABEL[state.mode];
@@ -236,6 +237,7 @@
     overview: { slug: 'visao-geral', title: 'Visão geral', sub: () => `Como está a captação de ${resLabel().toLowerCase()} no período` },
     origin: { slug: 'origem', title: 'Origem dos leads', sub: () => 'De qual campanha, conjunto e anúncio vem cada resultado' },
     ads: { slug: 'anuncios', title: 'Anúncios', sub: () => 'Quais criativos trazem leads mais baratos' },
+    sales: { slug: 'vendas', title: 'Vendas', sub: () => 'Do anúncio até a venda: qual criativo gerou cada contrato' },
     campaigns: { slug: 'campanhas', title: 'Campanhas', sub: () => 'Todos os números por campanha, conjunto e anúncio' },
     audience: { slug: 'publico', title: 'Público', sub: () => 'Posicionamento, idade, gênero, região e dia da semana' },
     settings: { slug: 'configuracoes', title: 'Configurações', sub: () => 'Fonte de dados e preferências' },
@@ -285,6 +287,7 @@
     if (pg === 'ads') renderRanking();
     if (pg === 'campaigns') renderTable();
     if (pg === 'audience') { renderBreakdowns(); renderWeekday(); renderSegmentation(); }
+    if (pg === 'sales') renderSales();
     requestAnimationFrame(() => Object.values(charts).forEach((c) => { if (!c.isDisposed() && c.getDom().offsetParent) c.resize(); }));
     writeHash();
   }
@@ -889,6 +892,261 @@
     }).join('') + `<div class="f-cost"><div><span>CPM</span><strong class="num">${F.money(c.cpm)}</strong></div><div><span>CPC (link)</span><strong class="num">${F.money(c.cpc)}</strong></div><div><span>${cplLabel()}</span><strong class="num">${F.money(c.cpl)}</strong></div></div>`;
   }
 
+  // ------------------------------------------------------------------ vendas (lead → Dommus → venda)
+  const SC = () => window.BNRSales;
+  const VIA_LABEL = { utm: 'UTM do anúncio', email: 'E-mail', telefone: 'Telefone', nome: 'Nome e data', anuncio: 'Nome do anúncio', campanha: 'Só a campanha' };
+  const VIA_CONF = { utm: 'good', email: 'good', telefone: 'good', nome: 'warn', anuncio: 'warn', campanha: 'warn' };
+  const CONF_TXT = { good: 'confiança alta', warn: 'confiança média', bad: 'confiança baixa' };
+  // Filtros de campanha/conjunto valem para as vendas; o filtro de objetivo, não (venda vem de lead e de conversa).
+  function adPasses(id) {
+    const a = state.data.ads[id];
+    if (!a) return !state.campaigns.size && !state.adsets.size;
+    if (state.campaigns.size && !state.campaigns.has(a.campaignId)) return false;
+    if (state.adsets.size && !state.adsets.has(a.adsetId)) return false;
+    return true;
+  }
+  /** Toque que leva o crédito da venda: o primeiro lead da pessoa ou o último antes da venda. */
+  function saleTouch(s) {
+    const t = s.t || []; if (!t.length) return null;
+    if (state.attr === 'first') return t[0];
+    const before = t.filter((x) => !s.d || !x[0] || x[0] <= s.d);
+    return before.length ? before[before.length - 1] : t[0];
+  }
+  function salePasses(s) {
+    const tc = saleTouch(s);
+    if (tc) return adPasses(tc[1]);
+    if (s.camp) return !state.adsets.size && (!state.campaigns.size || state.campaigns.has(s.camp));
+    return !state.campaigns.size && !state.adsets.size;
+  }
+  function salesModel() {
+    const S = state.sales; const d = state.data;
+    const inP = (x) => x && x >= state.since && x <= state.until;
+    const sales = S.sales.filter((s) => inP(s.d) && salePasses(s));
+    const C = {}; S.leads.cols.forEach((c, i) => (C[c] = i));
+    const leads = S.leads.rows.filter((r) => inP(r[C.d]) && adPasses(r[C.ad]));
+    const adSet = new Set(Object.keys(d.ads).filter(adPasses));
+    const spend = total(state.since, state.until, adSet);
+    return { sales, leads, C, adSet, spend };
+  }
+  function prepSales(s) {
+    if (!s) return null;
+    s.sales = s.sales || []; s.leads = s.leads || { cols: ['d', 'ad', 'st', 'via'], rows: [] };
+    s.stages = s.stages || ['No Dommus', 'Em atendimento', 'Visita', 'Proposta', 'Venda'];
+    return s;
+  }
+  async function loadSales(data) {
+    if (data.source === 'demo') { state.sales = prepSales(window.BNRDemo.sales(data)); return; }
+    state.sales = null;
+    if (data.source !== 'live') return;
+    try {
+      const r = await fetch('data/sales.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (state.data !== data) return;
+      state.sales = prepSales(await r.json());
+    } catch (e) { state.sales = { missing: true }; }
+    if (state.page === 'sales') render();
+  }
+
+  function renderSales() {
+    const S = state.sales;
+    const box = $('#sales-status');
+    if (!S && state.data.source === 'live') { box.innerHTML = '<div class="empty">Carregando vendas…</div>'; $('#sales-main').hidden = true; return; }
+    if (!S || S.missing) {
+      box.innerHTML = `<div class="setup"><b>A aba Vendas ainda não tem dados.</b> Ela precisa de duas coisas: os leads do formulário da Meta (permissão <code>leads_retrieval</code> no token) e o export do Dommus. O passo a passo está no README, em “Vendas: do anúncio ao contrato”. Enquanto isso, você pode importar um export do Dommus aqui mesmo.</div>` + importBlock(null);
+      ['#sales-kpis', '#sales-funnel', '#sales-links', '#sales-ads', '#sales-list'].forEach((id) => ($(id).innerHTML = ''));
+      $('#sales-main').hidden = true; return;
+    }
+    $('#sales-main').hidden = false;
+    const m = salesModel(); const d = state.data;
+    renderSalesStatus(S, m);
+    const withAd = m.sales.filter((s) => saleTouch(s));
+    const fromAds = m.sales.filter((s) => saleTouch(s) || s.camp);
+    const vgv = m.sales.reduce((a, s) => a + (s.v || 0), 0);
+    const vgvAds = fromAds.reduce((a, s) => a + (s.v || 0), 0);
+    const cohort = m.leads.length; const cohortWon = m.leads.filter((r) => r[m.C.st] === 4).length;
+    const lags = withAd.map((s) => { const tc = saleTouch(s); return tc && tc[0] && s.d ? D.diff(tc[0], s.d) : null; }).filter((x) => x != null && x >= 0).sort((a, b) => a - b);
+    const median = lags.length ? lags[Math.floor(lags.length / 2)] : null;
+    const valued = m.sales.filter((s) => s.v);
+    const items = [
+      { l: 'Vendas', v: F.int(m.sales.length), ico: ICON.star, hero: true, sub: `${F.int(fromAds.length)} vieram de anúncio` },
+      { l: 'VGV vendido', v: esc(F.money(vgv)), ico: ICON.wallet, sub: valued.length ? `ticket médio ${F.money(vgv / valued.length)}` : 'sem valor no Dommus' },
+      { l: 'Custo por venda', v: moneyParts(fromAds.length ? m.spend.spend / fromAds.length : null), ico: ICON.tag, sub: 'investimento ÷ vendas de anúncio' },
+      { l: 'Lead → venda', v: F.pct(cohort ? cohortWon / cohort : null), ico: ICON.target, sub: `dos ${F.int(cohort)} leads que chegaram no período` },
+    ];
+    $('#sales-kpis').innerHTML = items.map((it) => `<div class="kpi ${it.hero ? 'hero' : ''}">
+        <div class="kpi-top"><span class="kpi-label">${esc(it.l)}</span><span class="kpi-ico">${it.ico}</span></div>
+        <div class="kpi-value num">${it.v}</div><div class="kpi-foot"><span>${esc(it.sub)}</span></div></div>`).join('');
+    $('#sales-mini').innerHTML = [
+      ['VGV ÷ investimento', m.spend.spend > 0 && vgvAds ? nf.int.format(vgvAds / m.spend.spend) + 'x' : '—', 'quanto cada R$ 1 em anúncio virou em VGV'],
+      ['Tempo até a venda', median != null ? `${F.int(median)} dias` : '—', 'mediana, do lead até o contrato'],
+      ['Investimento no período', F.money(m.spend.spend), 'dos anúncios no filtro'],
+      ['Vendas sem origem', F.int(m.sales.length - fromAds.length), 'indicação, plantão, orgânico…'],
+    ].map(([l, v, s]) => `<div><span>${esc(l)}</span><strong class="num">${esc(v)}</strong><small>${esc(s)}</small></div>`).join('');
+    renderSalesFunnel(S, m);
+    renderSalesLinks(S, m);
+    renderSalesAds(m);
+    renderSalesList(m);
+  }
+
+  function importBlock(S) {
+    const needKey = S && S.keys;
+    return `<div class="import-row">
+      ${needKey ? '<label class="field" title="A frase do secret SALES_KEY. Fica só neste navegador.">Frase secreta <input type="password" id="sales-key" autocomplete="off" placeholder="SALES_KEY" /></label>' : ''}
+      <label class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Importar export do Dommus<input type="file" id="dommus-input" accept=".csv,.xlsx,.json,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden /></label>
+      <span class="muted">CSV ou Excel. O arquivo é lido só neste navegador, nada é enviado.</span></div>`;
+  }
+  function renderSalesStatus(S, m) {
+    const ok = (b) => `<span class="dot ${b ? 'on' : 'off'}"></span>`;
+    const mf = S.metaForms || {}, dm = S.dommus || {}, cov = S.coverage;
+    const formRows = m.leads.filter((r) => r[m.C.via] === 'form');
+    const found = formRows.filter((r) => r[m.C.st] !== -1).length;
+    const srcTxt = { api: 'API', export: 'export automático', import: 'arquivo importado', demo: 'demonstração' }[dm.source] || '';
+    $('#sales-status').innerHTML = `<div class="conn">
+        <div>${ok(mf.connected)}<b>Formulários da Meta</b><small>${mf.connected ? `${F.int(mf.leads)} leads com nome, e-mail e telefone` : esc(mf.error || 'não conectado')}</small></div>
+        <div>${ok(dm.connected)}<b>Dommus</b><small>${dm.connected ? `${F.int(dm.records)} oportunidades · ${esc(srcTxt)}` : esc(dm.error || 'não conectado')}</small></div>
+        <div>${ok(formRows.length && found / formRows.length > 0.7)}<b>Leads achados no Dommus</b><small>${formRows.length && dm.connected ? `${F.pct(found / formRows.length)} dos leads do formulário no período${cov && cov.since ? ` (export desde ${D.fmt(cov.since, { year: 'numeric' })})` : ''}` : '—'}</small></div>
+      </div>${S.source === 'demo' ? '<p class="muted demo-note">Dados de demonstração. Os clientes aparecem mascarados, como na versão real.</p>' : ''}${importBlock(S)}`;
+  }
+  function renderSalesFunnel(S, m) {
+    const st = m.leads.map((r) => r[m.C.st]);
+    if (!st.length) { $('#sales-funnel').innerHTML = '<div class="empty">Nenhum lead no período.</div>'; return; }
+    const dm = S.dommus && S.dommus.connected;
+    const steps = [['Leads', st.length]].concat(S.stages.map((l, k) => [l, st.filter((x) => (k === 0 ? x !== -1 : x !== 9 && x >= k)).length]));
+    const lost = st.filter((x) => x === 9).length;
+    const max = steps[0][1] || 1;
+    $('#sales-funnel').innerHTML = (dm ? '' : '<div class="setup sm">Conecte o Dommus para ver as etapas depois do lead.</div>') + steps.slice(0, dm ? undefined : 1).map(([l, v], i) => {
+      const w = i === 0 ? 100 : Math.max(6, Math.pow(v / max, 0.45) * 100);
+      const rate = i === 0 ? null : steps[i - 1][1] ? v / steps[i - 1][1] : null;
+      return `<div class="f-step"><div class="lbl">${esc(l)}</div><div class="f-bar"><i style="width:${w}%"></i><b class="num${w < 22 ? ' out' : ''}" ${w < 22 ? `style="left:calc(${w}% + 10px)"` : ''}>${F.int(v)}</b></div><div class="rate">${rate == null ? '' : `<strong class="num">${F.pct(rate)}</strong>da anterior`}</div></div>`;
+    }).join('') + (dm ? `<p class="muted f-note">${F.int(lost)} desistiram ou foram descartados · ${F.int(st.filter((x) => x === -1).length)} não foram achados no Dommus</p>` : '');
+  }
+  function renderSalesLinks(S, m) {
+    const by = {}; let none = 0;
+    for (const s of m.sales) { if (!s.via) { none++; continue; } by[s.via] = (by[s.via] || 0) + 1; }
+    const order = ['utm', 'email', 'telefone', 'anuncio', 'nome', 'campanha'];
+    const n = m.sales.length || 1;
+    const rows = order.filter((k) => by[k]).map((k) => [VIA_LABEL[k], by[k], VIA_CONF[k]]);
+    if (none) rows.push(['Sem anúncio identificado', none, 'none']);
+    $('#sales-links').innerHTML = rows.length ? rows.map(([l, v, c]) => `<div class="link-row"><span>${esc(l)}</span><span class="lk-bar"><i style="width:${(v / n) * 100}%"></i></span><b class="num">${F.int(v)}</b><span class="pill ${c}">${c === 'none' ? 'sem origem' : CONF_TXT[c]}</span></div>`).join('') +
+      '<p class="muted f-note">Como cada venda do Dommus foi ligada ao anúncio. E-mail, telefone e UTM são ligações exatas; nome e campanha são aproximações.</p>'
+      : '<div class="empty">Nenhuma venda no período.</div>';
+  }
+  function renderSalesAds(m) {
+    const d = state.data; const by = new Map(); const camps = new Map();
+    const get = (id) => { let x = by.get(id); if (!x) by.set(id, (x = { id, leads: 0, won: 0, sales: 0, vgv: 0 })); return x; };
+    for (const r of m.leads) { const x = get(r[m.C.ad]); x.leads++; if (r[m.C.st] === 4) x.won++; }
+    for (const s of m.sales) {
+      const tc = saleTouch(s);
+      if (tc) { const x = get(tc[1]); x.sales++; x.vgv += s.v || 0; }
+      else if (s.camp) { const c = camps.get(s.camp) || { sales: 0, vgv: 0 }; c.sales++; c.vgv += s.v || 0; camps.set(s.camp, c); }
+    }
+    const spend = aggregate(state.since, state.until, m.adSet, (r) => r[d._c.ad]);
+    const list = [...by.values()].filter((x) => x.sales || x.leads >= 3).map((x) => Object.assign(x, { m: spend.get(x.id) || derive(blank()) }))
+      .sort((a, b) => b.sales - a.sales || b.vgv - a.vgv || b.leads - a.leads).slice(0, 25);
+    if (!list.length && !camps.size) { $('#sales-ads').innerHTML = '<div class="empty">Nenhum anúncio com leads ou vendas no período.</div>'; return; }
+    const head = '<thead><tr><th>Anúncio</th><th>Leads</th><th>Vendas</th><th title="Dos leads do período, quantos já viraram venda">Lead → venda</th><th>Investimento</th><th>CPL</th><th>Custo por venda</th><th>VGV</th><th title="VGV ÷ investimento">Retorno</th></tr></thead>';
+    const body = list.map((x) => {
+      const a = d.ads[x.id] || { name: 'Anúncio ' + x.id, campaignId: '' }; const img = a.thumb || a.image;
+      const cpl = x.leads ? x.m.spend / x.leads : null;
+      return `<tr data-ad="${esc(x.id)}" class="clickable" tabindex="0"><td><div class="cell-ad"><span class="lr-thumb sm" style="${img ? `background-image:url('${esc(img)}')` : ''}"></span><div><div class="nm">${esc(a.name)}</div><div class="sub">${esc((d.campaigns[a.campaignId] || {}).name || '')}</div></div></div></td>
+        <td class="num">${F.int(x.leads)}</td><td class="num"><b>${F.int(x.sales)}</b></td><td class="num">${x.leads ? F.pct(x.won / x.leads) : '—'}</td><td class="num">${F.money(x.m.spend)}</td><td class="num">${F.money(cpl)}</td>
+        <td class="num">${x.sales ? F.money(x.m.spend / x.sales) : '—'}</td><td class="num">${x.vgv ? F.money(x.vgv) : '—'}</td><td class="num">${x.sales && x.m.spend ? nf.int.format(x.vgv / x.m.spend) + 'x' : '—'}</td></tr>`;
+    }).join('') + [...camps.entries()].map(([id, c]) => `<tr><td><div class="cell-ad"><span class="lr-thumb sm"></span><div><div class="nm">${esc((d.campaigns[id] || {}).name || 'Campanha ' + id)}</div><div class="sub">Só a campanha identificada, sem o anúncio</div></div></div></td><td class="num">—</td><td class="num"><b>${F.int(c.sales)}</b></td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">${c.vgv ? F.money(c.vgv) : '—'}</td><td class="num">—</td></tr>`).join('');
+    $('#sales-ads').innerHTML = `<table class="sales-table">${head}<tbody>${body}</tbody></table>`;
+  }
+  const dShort = (x) => (x ? D.parse(x).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: '2-digit' }) : '—');
+  function renderSalesList(m) {
+    const d = state.data;
+    $$('#attr-seg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.a === state.attr));
+    $('#sales-show').value = state.salesShow;
+    let list = m.sales;
+    if (state.salesShow === 'ad') list = list.filter((s) => saleTouch(s) || s.camp);
+    if (state.salesShow === 'none') list = list.filter((s) => !saleTouch(s) && !s.camp);
+    $('#sales-list-sub').textContent = `${F.int(list.length)} ${list.length === 1 ? 'venda' : 'vendas'} fechadas no período · crédito para o ${state.attr === 'first' ? 'primeiro lead da pessoa' : 'último lead antes da venda'}`;
+    if (!list.length) { $('#sales-list').innerHTML = '<div class="empty">Nenhuma venda no período com esse filtro.</div>'; $('#sales-more').hidden = true; return; }
+    $('#sales-list').innerHTML = list.slice(0, state.salesLimit).map((s) => {
+      const tc = saleTouch(s); const a = tc && d.ads[tc[1]];
+      const img = a && (a.thumb || a.image);
+      const days = tc && tc[0] && s.d ? D.diff(tc[0], s.d) : null;
+      const conf = s.via ? VIA_CONF[s.via] : 'none';
+      const origin = tc
+        ? `<button class="j-step j-ad" data-ad="${esc(tc[1])}" title="Ver o anúncio"><span class="lr-thumb sm" style="${img ? `background-image:url('${esc(img)}')` : ''}"></span><span><small>Anúncio</small><b>${esc(a ? a.name : 'Anúncio ' + tc[1])}</b><em>${esc(a ? (d.campaigns[a.campaignId] || {}).name || '' : '')}${a && d.adsets[a.adsetId] ? ' › ' + esc(d.adsets[a.adsetId].name) : ''}</em></span></button>`
+        : s.camp ? `<div class="j-step muted-step"><span><small>Campanha</small><b>${esc((d.campaigns[s.camp] || {}).name || s.camp)}</b><em>anúncio não identificado</em></span></div>`
+          : `<div class="j-step muted-step"><span><small>Origem no Dommus</small><b>${esc(s.o || 'Não informada')}</b><em>sem anúncio identificado</em></span></div>`;
+      const more = (s.t || []).length > 1 ? `<span class="pill outline" title="${esc(s.t.map((t) => `${D.fmt(t[0])}: ${(d.ads[t[1]] || {}).name || t[1]}`).join('\n'))}">${s.t.length} leads antes da venda</span>` : '';
+      return `<div class="journey">
+        <div class="j-client"><b>${esc(s.nm)}</b><small>${esc(s.ph || '')}</small><strong class="num">${s.v ? F.money(s.v) : 'Valor não informado'}</strong><small>${esc(s.pr || '')}</small></div>
+        <div class="j-path">${origin}
+          <span class="j-arrow" aria-hidden="true">→</span>
+          <div class="j-step"><span><small>Lead</small><b>${dShort(tc && tc[0] ? tc[0] : s.cr)}</b><em>${tc ? (tc[2] === 'utm' ? 'landing page' : 'formulário') : 'no Dommus'}</em></span></div>
+          <span class="j-arrow" aria-hidden="true">→</span>
+          <div class="j-step won"><span><small>Venda</small><b>${dShort(s.d)}</b><em>${days != null && days >= 0 ? `+${F.int(days)} ${days === 1 ? 'dia' : 'dias'}` : 'Venda ganha'}</em></span></div>
+        </div>
+        <div class="j-match">${s.via ? `<span class="pill ${conf}">${esc(VIA_LABEL[s.via])} · ${CONF_TXT[conf]}</span>` : '<span class="pill none">sem origem</span>'}${more}</div>
+      </div>`;
+    }).join('');
+    $('#sales-more').hidden = list.length <= state.salesLimit;
+  }
+
+  // Importa o export do Dommus no navegador e refaz o cruzamento (nada sai do navegador)
+  async function hmacFn(pass) {
+    const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return async (x) => [...new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(x)))].map((v) => v.toString(16).padStart(2, '0')).join('').slice(0, 20);
+  }
+  const inflateBrowser = async (u8) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  async function importDommus(file) {
+    const S = state.sales && !state.sales.missing ? state.sales : null;
+    try {
+      let hash = null, leads = [];
+      if (S && S.keys) {
+        const pass = ($('#sales-key') && $('#sales-key').value) || '';
+        if (!pass) { toast('Digite a frase secreta (SALES_KEY) antes de importar.', 5000); return; }
+        hash = await hmacFn(pass);
+        if ((await hash('bnr-check')) !== S.keys.check) { toast('Frase secreta errada: ela precisa ser igual ao secret SALES_KEY.', 6000); return; }
+        leads = S.keys.rows.map((r) => ({ d: r[0], ad: r[1], e: r[2], p: r[3], n: r[4] }));
+      } else if (S) {
+        const C = {}; S.leads.cols.forEach((c, i) => (C[c] = i));
+        leads = S.leads.rows.filter((r) => r[C.via] === 'form').map((r) => ({ d: r[C.d], ad: r[C.ad] }));
+      }
+      const objs = await SC().readFile(new Uint8Array(await file.arrayBuffer()), file.name, inflateBrowser);
+      const { records, map } = SC().toRecords(objs, {});
+      if (!records.length) throw new Error('Não achei nenhuma oportunidade no arquivo (precisa ter nome, e-mail ou telefone).');
+      // sem a frase, não dá para comparar contato: o cruzamento usa só UTM e nomes de anúncio/campanha
+      await SC().withKeys(records, hash || (async () => null));
+      const res = SC().match(leads, records, state.data);
+      state.sales = prepSales(Object.assign({}, S || {}, {
+        source: 'import', generatedAt: new Date().toISOString(), stages: SC().STAGES,
+        metaForms: S ? S.metaForms : { connected: false, error: 'Leads do formulário não sincronizados' },
+        dommus: { connected: true, source: 'import', records: records.length, fields: map },
+        leads: res.leads, sales: res.sales, coverage: res.coverage, keys: S && S.keys,
+      }));
+      const cols = Object.keys(map).map((k) => SC().FIELD_LABEL[k]).filter(Boolean).join(', ');
+      toast(`${F.int(records.length)} oportunidades lidas · ${F.int(res.sales.length)} vendas · colunas: ${cols}${!map.stage && !map.saleDate ? '. Atenção: não achei a coluna de etapa nem a de data da venda.' : ''}`, 9000);
+      render();
+    } catch (e) { toast('Erro ao ler o export: ' + e.message, 7000); }
+  }
+  function exportSalesCsv() {
+    const d = state.data; const m = salesModel();
+    const lines = [['Data da venda', 'Cliente', 'Valor', 'Empreendimento', 'Campanha', 'Conjunto', 'Anúncio', 'ID do anúncio', 'Data do lead', 'Dias até a venda', 'Ligado por', 'Origem no Dommus'].join(';')];
+    for (const s of m.sales) {
+      const tc = saleTouch(s); const a = tc && d.ads[tc[1]];
+      const camp = a ? (d.campaigns[a.campaignId] || {}).name : s.camp ? (d.campaigns[s.camp] || {}).name : '';
+      lines.push([s.d, s.nm, s.v == null ? '' : String(s.v).replace('.', ','), s.pr, camp || '', a ? (d.adsets[a.adsetId] || {}).name : '', a ? a.name : '', tc ? tc[1] : '', tc ? tc[0] : '', tc && tc[0] && s.d ? D.diff(tc[0], s.d) : '', s.via ? VIA_LABEL[s.via] : 'Sem origem', s.o].map((v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`).join(';'));
+    }
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement('a'); el.href = url; el.download = `bnr-vendas_${state.since}_${state.until}.csv`; el.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  /** Bloco de vendas no detalhe do anúncio. */
+  function adSalesBlock(id) {
+    const S = state.sales; if (!S || S.missing || !S.sales.length) return '';
+    const list = S.sales.filter((s) => s.d >= state.since && s.d <= state.until && (saleTouch(s) || [])[1] === id);
+    if (!list.length) return `<div><div class="sub-title">Vendas</div><div class="muted" style="font-size:12.5px">Nenhuma venda atribuída a este anúncio no período.</div></div>`;
+    const vgv = list.reduce((a, s) => a + (s.v || 0), 0);
+    return `<div><div class="sub-title">Vendas no período · ${F.int(list.length)} · ${F.money(vgv)}</div><div class="dr-sales">${list.slice(0, 8).map((s) => `<div><b>${esc(s.nm)}</b><span>${D.fmt(s.d, { year: 'numeric' })}</span><span class="num">${s.v ? F.money(s.v) : '—'}</span></div>`).join('')}</div></div>`;
+  }
+
   // ---- Drawer (detalhe do anúncio)
   function openAd(id) {
     const d = state.data; const a = d.ads[id]; if (!a) return;
@@ -911,6 +1169,7 @@
         <div><span>CPC</span><strong class="num">${F.money(m.cpc)}</strong></div>
         <div><span>Conv. clique→lead</span><strong class="num">${F.pct(m.cvr)}</strong></div>
       </div>
+      ${adSalesBlock(id)}
       <div><div class="sub-title">Evolução diária</div><div id="dr-chart" style="height:220px"></div></div>
       ${a.title || a.body ? `<div><div class="sub-title">Texto do anúncio</div><div class="ad-copy">${a.title ? `<b>${esc(a.title)}</b>\n` : ''}${esc(a.body || '')}</div></div>` : ''}
       <div class="muted" style="font-size:12px">ID do anúncio: ${esc(id)}</div>`;
@@ -1027,7 +1286,7 @@
   $$('.brand-card, .m-brand').forEach((a) => a.addEventListener('click', () => { if (state.page === 'overview') window.scrollTo({ top: 0, behavior: 'smooth' }); }));
   window.addEventListener('hashchange', () => { const pg = pageFromHash(); if (pg !== state.page) { state.page = pg; closePops(); render(); window.scrollTo(0, 0); } });
   document.addEventListener('keydown', (e) => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.list-row[data-ad], th[data-k]')) { e.preventDefault(); e.target.click(); }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.list-row[data-ad], th[data-k], tr[data-ad]')) { e.preventDefault(); e.target.click(); }
     if (e.key === 'Tab' && $('#drawer').classList.contains('open')) {
       const f = $$('#drawer a[href], #drawer button').filter((x) => x.offsetParent); if (!f.length) return;
       if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
@@ -1060,7 +1319,11 @@
   });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!document.documentElement.dataset.theme) render(); });
   $('#copy-link').addEventListener('click', async () => { writeHash(); try { await navigator.clipboard.writeText(location.href); toast('Link copiado — quem abrir verá esta mesma visão'); } catch (e) { toast('Copie o endereço da barra do navegador'); } closePops(); });
-  $('#export-csv').addEventListener('click', () => { exportCsv(); closePops(); });
+  $('#export-csv').addEventListener('click', () => { if (state.page === 'sales' && state.sales && !state.sales.missing) exportSalesCsv(); else exportCsv(); closePops(); });
+  $$('#attr-seg button').forEach((b) => b.addEventListener('click', () => { state.attr = b.dataset.a; store.set('attr', state.attr); render(); }));
+  $('#sales-show').addEventListener('change', (e) => { state.salesShow = e.target.value; state.salesLimit = 12; render(); });
+  $('#sales-more').addEventListener('click', () => { state.salesLimit += 12; render(); });
+  document.addEventListener('change', (e) => { if (e.target && e.target.id === 'dommus-input') { const f = e.target.files[0]; if (f) importDommus(f); e.target.value = ''; } });
   $('#csv-input').addEventListener('change', onCsvInput);
   $('#load-demo').addEventListener('click', () => { closePops(); useData(window.BNRDemo.build(), true); toast('Dados de demonstração carregados'); });
   $('#load-live').addEventListener('click', () => { closePops(); loadLive(true); });
@@ -1134,6 +1397,7 @@
     for (const id of [...state.campaigns]) if (!data.campaigns[id]) state.campaigns.delete(id);
     for (const id of [...state.adsets]) if (!data.adsets[id]) state.adsets.delete(id);
     setPreset(state.preset);
+    loadSales(data);
     render();
   }
   async function loadLive(manual) {
