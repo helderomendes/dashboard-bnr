@@ -95,6 +95,11 @@
     data._c = C;
     let min = '9999', max = '0000';
     for (const r of data.daily.rows) { if (r[C.d] < min) min = r[C.d]; if (r[C.d] > max) max = r[C.d]; }
+    if (data.chunks && data.chunks.length) { // dados divididos por mês: o período vem do arquivo principal
+      min = data.range ? data.range.since : data.chunks[0].m + '-01';
+      max = data.range ? data.range.until : D.today();
+      data._loaded = new Set(); data._pending = new Map();
+    }
     data.minDate = min === '9999' ? D.today() : min;
     data.maxDate = max === '0000' ? D.today() : max;
     // garante objetos de hierarquia mesmo se faltarem metadados
@@ -226,8 +231,34 @@
   // ------------------------------------------------------------------ render
   let allowed = new Set();
   let cur = null, prev = null;
+  // ---- Carregamento sob demanda: só os meses do período visto (e do período anterior, se comparando)
+  function missingChunks() {
+    const d = state.data; if (!d || !d.chunks) return [];
+    const [ps] = prevRange(); const from = (state.compare ? ps : state.since).slice(0, 7), to = state.until.slice(0, 7);
+    return d.chunks.filter((c) => c.m >= from && c.m <= to && !d._loaded.has(c.m));
+  }
+  function loadChunk(c) {
+    const d = state.data;
+    if (d._pending.has(c.m)) return d._pending.get(c.m);
+    const p = fetch('data/' + c.f).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then((x) => {
+      if (state.data !== d) return; // dados trocados no meio do caminho
+      d.daily.rows.push(...x.daily);
+      for (const [k, rows] of Object.entries(x.breakdowns || {})) if (d.breakdowns[k]) d.breakdowns[k].rows.push(...rows);
+      d._loaded.add(c.m);
+    }).finally(() => d._pending.delete(c.m));
+    d._pending.set(c.m, p); return p;
+  }
+  let loadingT = null;
+  function ensureChunks() {
+    const miss = missingChunks(); if (!miss.length) return true;
+    clearTimeout(loadingT); loadingT = setTimeout(() => { document.body.classList.add('is-loading'); toast(`Carregando ${miss.length === 1 ? '1 mês' : miss.length + ' meses'} de dados…`, 60000); }, 250);
+    Promise.all(miss.map(loadChunk)).then(() => { clearTimeout(loadingT); document.body.classList.remove('is-loading'); $('#toast').classList.remove('show'); render(); })
+      .catch(() => { clearTimeout(loadingT); document.body.classList.remove('is-loading'); toast('Não foi possível carregar parte dos dados. Tente de novo.', 5000); });
+    return false;
+  }
   function render() {
     if (!state.data) return;
+    if (!ensureChunks()) { renderShell(); return; }
     allowed = allowedAds();
     cur = total(state.since, state.until, allowed);
     const [ps, pu] = prevRange();

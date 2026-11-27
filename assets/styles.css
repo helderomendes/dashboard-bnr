@@ -358,6 +358,7 @@ button.row-item:hover { border-color: var(--primary-200); background: var(--prim
 .seg-table .tag { font-size: 11.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
 .seg-table .tag.adv { background: var(--primary-50); border-color: var(--primary-100); color: var(--primary); }
 .seg-table .tag.ex { text-decoration: line-through; color: var(--text-3); }
+body.is-loading .content { opacity: .55; transition: opacity .2s; pointer-events: none; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); color: var(--text-3); font-weight: 600; font-size: 12px; text-align: right; padding: 12px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
 thead th:first-child { text-align: left; position: sticky; left: 0; z-index: 3; min-width: 340px; }

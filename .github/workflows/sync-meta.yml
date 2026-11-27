@@ -84,7 +84,7 @@ jobs:
           META_API_VERSION: ${{ vars.META_API_VERSION || 'v23.0' }}
           LEAD_ACTION_TYPES: ${{ vars.LEAD_ACTION_TYPES }}
           PREV: .cache/prev.json
-          OUT: .vercel/output/static/data/insights.json
+          OUT: build/insights.json
         run: |
           mkdir -p "$(dirname "$OUT")"
           node scripts/fetch-meta.mjs
@@ -95,7 +95,7 @@ jobs:
           CACHE_KEY: ${{ secrets.CACHE_KEY }}
         run: |
           rm -f .cache/insights.enc .cache/prev.json
-          node scripts/cache-crypto.mjs encrypt .vercel/output/static/data/insights.json .cache/insights.enc
+          node scripts/cache-crypto.mjs encrypt build/insights.json .cache/insights.enc
 
       - name: Salvar cache cifrado
         if: ${{ env.USE_CACHE == 'true' && hashFiles('.cache/insights.enc') != '' }}
@@ -112,9 +112,12 @@ jobs:
           mkdir -p "$out/static"
           cp -r index.html assets "$out/static/"
           printf 'User-agent: *\nDisallow: /\n' > "$out/static/robots.txt"
+          # Dados em partes mensais: o dashboard baixa só os meses do período visto
+          if [ -f build/insights.json ]; then node scripts/split-data.mjs build/insights.json "$out/static/data"; fi
           cat > "$out/config.json" <<'JSON'
           {"version":3,"routes":[
             {"src":"/(.*)","headers":{"X-Robots-Tag":"noindex, nofollow, noarchive","X-Content-Type-Options":"nosniff","Cache-Control":"public, max-age=0, must-revalidate"},"continue":true},
+            {"src":"/data/chunks/(.*)","headers":{"Cache-Control":"public, max-age=31536000, immutable"},"continue":true},
             {"handle":"filesystem"},
             {"src":"/(.*)","status":404}
           ]}

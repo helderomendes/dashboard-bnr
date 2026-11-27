@@ -10,3 +10,4 @@ _site/
 node_modules/
 .DS_Store
 .cache/
+build/
