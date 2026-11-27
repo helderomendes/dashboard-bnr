@@ -44,11 +44,6 @@
   <!-- ============ PAINEL ============ -->
   <div class="panel">
     <header class="topbar">
-      <div class="search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input type="search" id="q" placeholder="Buscar campanha, conjunto ou anúncio" autocomplete="off" aria-label="Buscar" />
-        <kbd>/</kbd>
-      </div>
       <div class="top-actions">
         <div class="pop-wrap">
           <button class="btn" id="date-btn" aria-haspopup="dialog" aria-expanded="false">
@@ -234,9 +229,13 @@
         <div class="grid g-2e">
           <article class="card"><div class="card-head"><div><h2>Posicionamentos</h2><p>Feed, Stories, Reels…</p></div></div><div class="chart" id="placement-chart"></div></article>
           <article class="card"><div class="card-head"><div><h2>Idade e gênero</h2><p>Onde estão os leads</p></div></div><div class="chart" id="age-chart"></div></article>
-          <article class="card"><div class="card-head"><div><h2>Regiões</h2><p>Estados com mais resultado</p></div></div><div class="chart" id="region-chart"></div></article>
+          <article class="card"><div class="card-head"><div><h2 id="region-title">Regiões</h2><p id="region-sub">Estados com mais resultado</p></div></div><div class="chart" id="region-chart"></div></article>
           <article class="card"><div class="card-head"><div><h2>Dia da semana</h2><p>Barra azul forte = menor CPL</p></div></div><div class="chart" id="weekday-chart"></div></article>
         </div>
+        <article class="card flush" id="seg-card">
+          <div class="card-head pad"><div><h2>Segmentação dos conjuntos</h2><p id="seg-sub">Para quem cada conjunto está configurado e o que entregou no período</p></div></div>
+          <div class="table-wrap"><table class="seg-table" id="seg-table"></table></div>
+        </article>
       </section>
 
       <!-- ---------- CONFIGURAÇÕES ---------- -->

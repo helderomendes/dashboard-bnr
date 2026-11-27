@@ -105,6 +105,44 @@ function leadsOf(m) {
 const msgsOf = (m) => MSG_TYPES.reduce((s, t) => s + (m[t] || 0), 0);
 const round2 = (n) => Math.round(n * 100) / 100;
 
+// A API de Insights não quebra resultados por cidade (o mais fino é "region", o estado).
+// Por isso guardamos as cidades segmentadas em cada conjunto; o dashboard soma por elas.
+const UF = { Acre: 'AC', Alagoas: 'AL', 'Amapá': 'AP', Amazonas: 'AM', Bahia: 'BA', 'Ceará': 'CE', 'Distrito Federal': 'DF', 'Espírito Santo': 'ES', 'Goiás': 'GO', 'Maranhão': 'MA', 'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG', 'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR', Pernambuco: 'PE', 'Piauí': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN', 'Rio Grande do Sul': 'RS', 'Rondônia': 'RO', Roraima: 'RR', 'Santa Catarina': 'SC', 'São Paulo': 'SP', Sergipe: 'SE', Tocantins: 'TO' };
+function audience(t) {
+  if (!t) return undefined;
+  const list = (x) => (Array.isArray(x) ? x : x ? Object.values(x) : []);
+  const names = (x) => list(x).map((i) => i.name).filter(Boolean);
+  const range = list(t.age_range);
+  const out = {
+    age: [t.age_min || 18, t.age_max || 65],
+    ageSug: range.length === 2 ? range.map(Number) : undefined,
+    adv: !!(t.targeting_automation && t.targeting_automation.advantage_audience),
+    genders: ({ 1: 'Homens', 2: 'Mulheres' })[list(t.genders).length === 1 ? list(t.genders)[0] : 0] || 'Todos',
+    interests: [], behaviors: [],
+    audiences: names(t.custom_audiences),
+    excluded: names(t.excluded_custom_audiences),
+  };
+  for (const f of list(t.flexible_spec)) {
+    out.interests.push(...names(f.interests), ...names(f.work_positions), ...names(f.education_majors), ...names(f.life_events), ...names(f.family_statuses));
+    out.behaviors.push(...names(f.behaviors));
+  }
+  if (t.exclusions) out.excluded.push(...names(t.exclusions.interests), ...names(t.exclusions.behaviors));
+  out.interests = [...new Set(out.interests)]; out.behaviors = [...new Set(out.behaviors)];
+  return out;
+}
+function geoLabels(targeting) {
+  const g = targeting && targeting.geo_locations; if (!g) return undefined;
+  const list = (x) => (Array.isArray(x) ? x : x ? Object.values(x) : []);
+  const km = (r, u) => (r ? ` (+${u === 'mile' ? Math.round(r * 1.609) : r} km)` : '');
+  const out = [];
+  for (const c of list(g.cities)) out.push(`${c.name}${UF[c.region] ? ' - ' + UF[c.region] : ''}${km(c.radius, c.distance_unit)}`);
+  for (const r of list(g.regions)) out.push(`${r.name} (estado)`);
+  for (const l of list(g.custom_locations)) out.push(`${l.name || l.address_string || 'Ponto no mapa'}${km(l.radius, l.distance_unit)}`);
+  for (const z of list(g.zips)) out.push(`CEP ${z.name || z.key}`);
+  if (!out.length) for (const c of list(g.countries)) out.push(c === 'BR' ? 'Brasil' : c);
+  return out.length ? out : undefined;
+}
+
 async function insights(level, since, until, extra = {}) {
   const fields = level === 'ad'
     ? 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,inline_link_clicks,actions'
@@ -164,7 +202,7 @@ async function main() {
   console.log('• Estrutura (campanhas, conjuntos, anúncios)');
   const [campaigns, adsets, ads] = await Promise.all([
     all(`${ACCOUNT}/campaigns`, { fields: 'id,name,effective_status,objective', filtering }),
-    all(`${ACCOUNT}/adsets`, { fields: 'id,name,effective_status,campaign_id,optimization_goal', filtering }),
+    all(`${ACCOUNT}/adsets`, { fields: 'id,name,effective_status,campaign_id,optimization_goal,targeting', filtering }),
     all(`${ACCOUNT}/ads`, { fields: 'id,name,effective_status,adset_id,campaign_id,created_time,creative{thumbnail_url,image_url,title,body,object_type,effective_object_story_id,instagram_permalink_url}', filtering, thumbnail_width: 640, thumbnail_height: 640 }),
   ]);
 
@@ -186,7 +224,7 @@ async function main() {
     data.daily.rows.push(...prev.daily.rows.filter((r) => keep(r[0])));
   }
   for (const c of campaigns) data.campaigns[c.id] = { name: c.name, status: c.effective_status, objective: c.objective };
-  for (const s of adsets) data.adsets[s.id] = { name: s.name, status: s.effective_status, campaignId: s.campaign_id, optimization: s.optimization_goal };
+  for (const s of adsets) data.adsets[s.id] = { name: s.name, status: s.effective_status, campaignId: s.campaign_id, optimization: s.optimization_goal, geo: geoLabels(s.targeting), aud: audience(s.targeting) };
   for (const a of ads) {
     const cr = a.creative || {};
     const fmt = { VIDEO: 'VÍDEO', PHOTO: 'IMAGEM', SHARE: 'LINK', STATUS: 'TEXTO', MULTI_SHARE: 'CARROSSEL' }[cr.object_type] || cr.object_type;

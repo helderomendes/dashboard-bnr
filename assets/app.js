@@ -238,7 +238,7 @@
     if (pg === 'origin') { renderSankey(); renderShare(); renderFunnel(); }
     if (pg === 'ads') renderRanking();
     if (pg === 'campaigns') renderTable();
-    if (pg === 'audience') { renderBreakdowns(); renderWeekday(); }
+    if (pg === 'audience') { renderBreakdowns(); renderWeekday(); renderSegmentation(); }
     requestAnimationFrame(() => Object.values(charts).forEach((c) => { if (!c.isDisposed() && c.getDom().offsetParent) c.resize(); }));
     writeHash();
   }
@@ -714,7 +714,7 @@
     const o = baseOpt(p); const ax = axisCommon(p);
     o.grid = { left: 4, right: 52, top: 6, bottom: 4, containLabel: true };
     o.xAxis = Object.assign({ type: 'value' }, ax, { axisLabel: { show: false } });
-    o.yAxis = { type: 'category', data: sorted.map(([k]) => labelFn(k)), axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: p.text2, fontSize: 11.5, width: 120, overflow: 'truncate' } };
+    o.yAxis = { type: 'category', data: sorted.map(([k]) => labelFn(k)), axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: p.text2, fontSize: 11.5, width: 150, overflow: 'truncate' } };
     o.tooltip = Object.assign(o.tooltip, { trigger: 'item', formatter: (x) => { const m = sorted[x.dataIndex][1]; return `<b>${esc(x.name)}</b><br>${resLabel()}: ${F.int(m.res)}<br>Investimento: ${F.money(m.spend)}<br>${cplLabel()}: ${F.money(m.cpl)}<br>CTR: ${F.pct(m.ctr)}`; } });
     const fmt = bdFmt();
     o.series = [{ type: 'bar', data: sorted.map(([, m]) => +(bdValue(m) || 0).toFixed(2)), barMaxWidth: 14, itemStyle: { color: p.c[0], borderRadius: 99 }, label: { show: true, position: 'right', color: p.text2, fontSize: 11, formatter: (x) => fmt(x.value) } }];
@@ -726,9 +726,46 @@
     $$('#bd-seg button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.m === state.bd));
     const pl = breakdown('placement', state.since, state.until, allowed);
     hbar('placement-chart', pl && [...pl.entries()], placementLabel, 0);
-    const rg = breakdown('region', state.since, state.until, allowed);
-    hbar('region-chart', rg && [...rg.entries()], (k) => k.replace(/^State of /, '').replace(/ \(state\)$/, ''), 2);
+    // Cidades vêm da segmentação de cada conjunto (a Meta não quebra resultados por cidade).
+    // Conjuntos com mais de uma cidade aparecem como um grupo, porque a divisão entre elas não existe nos dados.
+    const hasGeo = Object.values(state.data.adsets).some((s) => s.geo && s.geo.length);
+    if (hasGeo) {
+      const byCity = aggregate(state.since, state.until, allowed, (r, a) => { const s = state.data.adsets[a.adsetId]; return s && s.geo && s.geo.length ? s.geo.join(' + ') : 'Sem cidade definida'; });
+      $('#region-title').textContent = 'Cidades';
+      $('#region-sub').textContent = 'Cidades segmentadas nos conjuntos · conjuntos com várias cidades aparecem juntos';
+      hbar('region-chart', [...byCity.entries()], (k) => k, 2);
+    } else {
+      const rg = breakdown('region', state.since, state.until, allowed);
+      $('#region-title').textContent = 'Regiões';
+      $('#region-sub').textContent = 'Estados com mais resultado';
+      hbar('region-chart', rg && [...rg.entries()], (k) => k.replace(/^State of /, '').replace(/ \(state\)$/, ''), 2);
+    }
     renderAgeGender();
+  }
+  // Segmentação configurada em cada conjunto (vem da API; CSV e demonstração não trazem).
+  function renderSegmentation() {
+    const d = state.data; const card = $('#seg-card');
+    const has = Object.values(d.adsets).some((s) => s.aud || s.geo);
+    card.hidden = !has; if (!has) return;
+    const bySet = aggregate(state.since, state.until, allowed, (r, a) => a.adsetId);
+    const rows = [...bySet.entries()].filter(([, m]) => m.spend > 0).sort((a, b) => b[1].spend - a[1].spend);
+    const tags = (arr, cls) => (arr || []).map((t) => `<span class="tag${cls ? ' ' + cls : ''}">${esc(t)}</span>`).join('');
+    const age = (a) => {
+      if (!a || !a.age) return '—';
+      const ctl = `${a.age[0]}–${a.age[1] >= 65 ? '65+' : a.age[1]}`;
+      return a.adv && a.ageSug ? `<span class="tag adv" title="Sugestão de idade para o Advantage+">${a.ageSug[0]}–${a.ageSug[1] >= 65 ? '65+' : a.ageSug[1]} sugerido</span><span class="sub">limite ${ctl}</span>` : ctl;
+    };
+    const head = `<thead><tr><th>Conjunto</th><th class="txt">Cidades</th><th class="txt">Idade</th><th class="txt">Gênero</th><th class="txt">Interesses e públicos</th><th>Investimento</th><th>${esc(resLabel())}</th><th>${esc(cplLabel())}</th></tr></thead>`;
+    const body = rows.map(([id, m]) => {
+      const s = d.adsets[id] || {}; const a = s.aud || {}; const c = d.campaigns[s.campaignId] || {};
+      const who = tags(a.adv ? ['Advantage+'] : [], 'adv') + tags(a.interests) + tags(a.behaviors) + tags(a.audiences) + tags(a.excluded, 'ex');
+      return `<tr><td><span class="nm">${esc(s.name || id)}</span><span class="sub">${esc(c.name || '')}</span></td>
+        <td class="txt">${s.geo ? s.geo.map(esc).join('<br>') : '—'}</td><td class="txt">${age(a)}</td><td class="txt">${esc(a.genders || 'Todos')}</td>
+        <td class="txt"><div class="tags">${who || '<span class="muted">Aberto (sem interesses)</span>'}</div></td>
+        <td>${F.money(m.spend)}</td><td>${F.int(m.res)}</td><td>${m.cpl != null ? F.money(m.cpl) : '—'}</td></tr>`;
+    }).join('');
+    $('#seg-table').innerHTML = head + `<tbody>${body || '<tr><td colspan="8" class="muted">Nenhum conjunto veiculou no período</td></tr>'}</tbody>`;
+    $('#seg-sub').textContent = `Para quem cada conjunto está configurado e o que entregou no período · ${rows.length} ${rows.length === 1 ? 'conjunto' : 'conjuntos'}`;
   }
   function renderAgeGender() {
     const p = palette();
@@ -909,18 +946,15 @@
   segBind('#share-seg', 'share', 's', renderShare);
   segBind('#bd-seg', 'bd', 'm', renderBreakdowns);
   segBind('#table-seg', 'tableView', 'v', renderTable);
-  let qT;
-  $('#q').addEventListener('input', (e) => { clearTimeout(qT); qT = setTimeout(() => { state.q = e.target.value; render(); }, 180); });
   document.addEventListener('keydown', (e) => {
-    if (e.key === '/' && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); $('#q').focus(); }
     if (e.key === 'Escape') { closePops(); closeDrawer(); }
   });
   $('#chips').addEventListener('click', (e) => {
-    if (e.target.id === 'clear-all') { state.campaigns.clear(); state.adsets.clear(); state.q = ''; state.status = 'all'; $('#q').value = ''; return render(); }
+    if (e.target.id === 'clear-all') { state.campaigns.clear(); state.adsets.clear(); state.q = ''; state.status = 'all'; return render(); }
     const b = e.target.closest('button[data-t]'); if (!b) return;
     if (b.dataset.t === 'c') state.campaigns.delete(b.dataset.id);
     if (b.dataset.t === 's') state.adsets.delete(b.dataset.id);
-    if (b.dataset.t === 'q') { state.q = ''; $('#q').value = ''; }
+    if (b.dataset.t === 'q') state.q = '';
     if (b.dataset.t === 'st') state.status = 'all';
     render();
   });
@@ -1027,7 +1061,7 @@
     if (p.get('c')) state.campaigns = new Set(p.get('c').split(','));
     if (p.get('as')) state.adsets = new Set(p.get('as').split(','));
     if (p.get('st')) state.status = p.get('st');
-    if (p.get('q')) { state.q = p.get('q'); $('#q').value = state.q; }
+    if (p.get('q')) state.q = p.get('q');
   }
 
   // ------------------------------------------------------------------ boot
