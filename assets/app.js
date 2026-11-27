@@ -195,7 +195,7 @@
       backgroundColor: 'transparent',
       textStyle: { fontFamily: 'Inter, system-ui, sans-serif', color: p.text2 },
       tooltip: {
-        trigger: 'axis', backgroundColor: p.surface, borderColor: p.border, textStyle: { color: p.text, fontSize: 12 },
+        trigger: 'axis', triggerOn: 'mousemove|click', confine: true, backgroundColor: p.surface, borderColor: p.border, textStyle: { color: p.text, fontSize: 12 },
         extraCssText: 'box-shadow:0 8px 24px rgba(0,0,0,.15);border-radius:10px;padding:10px 12px;',
       },
       grid: { left: 8, right: 8, top: 36, bottom: 8, containLabel: true },
@@ -540,9 +540,8 @@
     chart('sankey-chart').on('click', (x) => {
       if (x.dataType !== 'node') return;
       const [t, id] = x.name.split(':');
+      // Clicar mostra os números (tooltip); não troca o filtro. Anúncio abre os detalhes.
       if (t === 'a') openAd(id);
-      else if (t === 'c') { state.campaigns = new Set([id]); state.adsets.clear(); render(); }
-      else if (t === 's' || t === 'o') { state.adsets = new Set([id]); render(); }
     });
   }
 
@@ -567,7 +566,7 @@
     }];
     chart('share-chart').setOption(o, true);
     chart('share-chart').off('click');
-    chart('share-chart').on('click', (x) => { state.campaigns = new Set([x.data.id]); state.adsets.clear(); render(); });
+    chart('share-chart').off('click'); // clicar só mostra os números da fatia
   }
 
   // ---- Ranking
