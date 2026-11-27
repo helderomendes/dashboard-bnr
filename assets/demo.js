@@ -146,5 +146,59 @@
     return data;
   }
 
-  window.BNRDemo = { build: buildDemo };
+  /** Vendas de demonstração (mesmo formato de data/sales.json), a partir dos leads diários do demo. */
+  function buildSalesDemo(data) {
+    const r = rng(777);
+    const C = {}; data.daily.cols.forEach((c, i) => (C[c] = i));
+    const first = ['Ana', 'Bruno', 'Carla', 'Diego', 'Elaine', 'Fábio', 'Gabriela', 'Henrique', 'Isabela', 'João', 'Karina', 'Lucas', 'Mariana', 'Nelson', 'Patrícia', 'Rafael', 'Simone', 'Thiago', 'Vanessa', 'Wesley'];
+    const last = 'SMOCPRLAFBGTVN';
+    const products = { c1: ['Residencial Vista Verde', 189000, 289000], c2: ['Torre Aurora', 420000, 780000], c3: ['Residencial Vista Verde', 179000, 249000], c4: ['Residencial Vista Verde', 199000, 279000] };
+    // qualidade comercial por anúncio: nem todo CPL barato vende
+    const qual = {}; Object.keys(data.ads).forEach((id, i) => { qual[id] = 0.4 + ((i * 37) % 11) / 10; });
+    const today = new Date().toISOString().slice(0, 10);
+    const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    const rows = [], sales = [];
+    for (const row of data.daily.rows) {
+      const ad = data.ads[row[C.ad]]; const n = row[C.leads] + row[C.msgs];
+      for (let k = 0; k < n; k++) {
+        const q = qual[row[C.ad]];
+        const x = r();
+        let st = x < 0.12 ? -1 : x < 0.38 ? 9 : x < 0.62 ? 0 : x < 0.82 ? 1 : x < 0.92 ? 2 : 3;
+        if (r() < 0.022 * q) st = 4;
+        const via = row[C.msgs] ? 'telefone' : r() < 0.7 ? 'form' : 'utm';
+        rows.push([row[C.d], row[C.ad], st, via === 'utm' ? 'utm' : 'form']);
+        if (st !== 4) continue;
+        const lag = 12 + Math.floor(r() * 70);
+        const d = addDays(row[C.d], lag);
+        if (d > today) { rows[rows.length - 1][2] = 3; continue; }
+        const [pr, lo, hi] = products[ad.campaignId] || products.c1;
+        const t = [[row[C.d], row[C.ad], via === 'form' ? (r() < 0.6 ? 'email' : 'telefone') : via]];
+        if (r() < 0.25) { const other = Object.keys(data.ads)[Math.floor(r() * Object.keys(data.ads).length)]; t.unshift([addDays(row[C.d], -(5 + Math.floor(r() * 30))), other, 'email']); }
+        sales.push({
+          d, v: Math.round((lo + r() * (hi - lo)) / 1000) * 1000, pr,
+          nm: first[Math.floor(r() * first.length)] + ' ' + last[Math.floor(r() * last.length)] + '.',
+          ph: `(31) ••••-${String(1000 + Math.floor(r() * 8999))}`, cr: row[C.d],
+          o: 'Facebook · Formulário', st: 'Venda Ganha', t, via: t[t.length - 1][2],
+        });
+      }
+    }
+    // vendas sem anúncio identificado (indicação, plantão, orgânico)
+    for (let i = 0; i < Math.max(2, Math.round(sales.length * 0.3)); i++) {
+      const d = addDays(today, -Math.floor(r() * 100));
+      sales.push({ d, v: Math.round((200000 + r() * 300000) / 1000) * 1000, pr: 'Residencial Vista Verde', nm: first[Math.floor(r() * first.length)] + ' ' + last[Math.floor(r() * last.length)] + '.', ph: `(31) ••••-${String(1000 + Math.floor(r() * 8999))}`, cr: addDays(d, -30), o: ['Indicação', 'Plantão de vendas', 'Instagram orgânico', 'Site'][i % 4], st: 'Venda Ganha', t: [], via: null });
+    }
+    const camp = Object.keys(data.campaigns)[1];
+    sales.push({ d: addDays(today, -9), v: 512000, pr: 'Torre Aurora', nm: 'Roberta L.', ph: '(31) ••••-4410', cr: addDays(today, -60), o: 'Facebook · ' + data.campaigns[camp].name, st: 'Venda Ganha', t: [], via: 'campanha', camp });
+    sales.sort((a, b) => (a.d < b.d ? 1 : -1));
+    const inDommus = rows.filter((x) => x[2] !== -1).length;
+    return {
+      version: 1, source: 'demo', generatedAt: new Date().toISOString(),
+      stages: ['No Dommus', 'Em atendimento', 'Visita', 'Proposta', 'Venda'],
+      metaForms: { connected: true, leads: rows.length }, dommus: { connected: true, source: 'demo', records: inDommus },
+      leads: { cols: ['d', 'ad', 'st', 'via'], rows }, sales,
+      coverage: { metaLeads: rows.length, found: inDommus, records: inDommus, linked: sales.filter((s) => s.t.length).length },
+    };
+  }
+
+  window.BNRDemo = { build: buildDemo, sales: buildSalesDemo };
 })();

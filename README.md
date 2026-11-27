@@ -17,6 +17,7 @@ Dashboard web para entender **de onde vem cada lead**: qual campanha, qual conju
 | **Tabela hierárquica** | Campanha › Conjunto › Anúncio com drill-down, ordenação por qualquer coluna e exportação em CSV |
 | **Público e posicionamento** | Feed/Stories/Reels, mapa de calor de idade × gênero e regiões (por resultados, CPL ou investimento) |
 | **Dia da semana e funil** | Melhor dia para anunciar e o funil impressão → clique → lead |
+| **Vendas** | Qual anúncio gerou cada venda: o caminho anúncio → lead → etapas do Dommus → contrato, custo por venda, VGV por anúncio e taxa de lead para venda |
 
 Recursos de uso:
 - Datas com os mesmos atalhos do Gerenciador (hoje, ontem, 7/14/30/90 dias, este mês, mês passado, personalizado).
@@ -134,6 +135,71 @@ O CSV é lido só no navegador; nada é enviado para servidor nenhum. As quebras
 
 ---
 
+## Vendas: do anúncio ao contrato
+
+A aba **Vendas** liga cada venda do Dommus ao anúncio que gerou o lead. Ela responde perguntas como "qual criativo vende, e não só qual traz o lead mais barato?".
+
+```
+Formulário da Meta (cada lead, com o anúncio) ─┐
+                                               ├─▶ equivalência de contatos ─▶ data/sales.json (cliente mascarado)
+Export do Dommus (oportunidades e etapas) ─────┘
+```
+
+### Como a equivalência é feita
+
+Cada oportunidade do Dommus é comparada com os leads do formulário, nesta ordem:
+
+| Ligação | Como | Confiança |
+|---|---|---|
+| UTM do anúncio | `utm_content` gravado no Dommus = ID do anúncio | alta |
+| E-mail | minúsculo e sem espaços | alta |
+| Telefone | DDD + 8 últimos dígitos: resolve o 9º dígito, o +55 e o DDD em campo separado | alta |
+| Nome do anúncio | campanha, mídia ou origem do Dommus com o nome exato de um anúncio | média |
+| Campanha | idem, com o nome de uma campanha (só a campanha fica identificada) | média |
+| Nome e data | primeiro + último nome iguais e lead até 10 dias antes ou depois | baixa |
+
+Uma pessoa pode ter gerado vários leads antes de comprar. A página deixa escolher quem leva o crédito: o **primeiro lead** ou o **último lead antes da venda**.
+
+As etapas do Dommus viram o funil **No Dommus → Em atendimento → Visita → Proposta → Venda**. "Venda Ganha" (ou uma data de venda/contrato) conta como venda. "Desistência" e "Não Perturbe" contam como perdidos. A etapa do tipo "Venda" (fechamento antes da formalização) conta como proposta.
+
+### Privacidade (LGPD)
+
+A página é aberta, então **nenhum dado pessoal é publicado**. O cliente aparece como `João S.` e `(31) ••••-7777`. Nome completo, e-mail e telefone ficam só dentro do job do GitHub Actions e no cache cifrado (AES-256-GCM). O arquivo `build/leads.json` nunca é copiado para a Vercel.
+
+### 1. Liberar os leads do formulário no token da Meta
+
+O token atual só lê números (`ads_read`). Para ler cada lead:
+
+1. Em **business.facebook.com › Configurações › Usuários do sistema › dashboard-bnr › Atribuir ativos**, adicione a **Página** da BNR com a permissão de **leads** (ou "Gerenciar Página").
+2. **Gere um novo token** com `ads_read`, `leads_retrieval`, `pages_show_list`, `pages_read_engagement` e `pages_manage_ads`. Troque o secret `META_ACCESS_TOKEN`.
+3. Opcional: variável `META_PAGE_IDS` com os IDs das Páginas, se o token tiver acesso a outras.
+
+> A Meta só devolve leads de até **90 dias**. Por isso o `CACHE_KEY` é importante: o histórico vai se acumulando no cache cifrado. Sem ele, as vendas de leads com mais de 90 dias só são ligadas por UTM ou pelo nome do anúncio/campanha no Dommus.
+
+### 2. Levar o Dommus até o dashboard
+
+O Dommus não tem uma API de leitura documentada. O que existe é o **export**: no Prospecta, a Lista de Oportunidades / Pesquisa Geral, e no Vende, **Lupa › Relatório de Base Completa › Exportar Tabela**. Marque ao menos nome, e-mail, telefone (e DDD), data de cadastro, etapa/status, data da venda, valor, empreendimento, origem, mídia e campanha.
+
+Escolha uma forma:
+
+| Forma | Como | Para quem |
+|---|---|---|
+| **Automática** | Suba o export no Google Drive (ou numa Planilha Google) com acesso "qualquer pessoa com o link" e salve o link no secret `DOMMUS_EXPORT_URL`. Para atualizar, substitua o arquivo mantendo o mesmo link (Drive › Gerenciar versões). | Todos que abrem o dashboard veem as vendas |
+| **No navegador** | Na aba Vendas, **Importar export do Dommus**. O arquivo é lido só no seu navegador. Para comparar e-mail e telefone, crie o secret `SALES_KEY` (frase com 12+ caracteres) e digite a mesma frase na página. | Só quem importou vê, até recarregar a página |
+| **API** | Se o Dommus liberar um endpoint, use os secrets `DOMMUS_API_URL` e `DOMMUS_API_TOKEN` (cabeçalho em `DOMMUS_AUTH_HEADER`, padrão `Authorization: Bearer`). | Todos |
+
+O DE/PARA das colunas é automático (aceita "Nome do Lead", "E-mail", "Telefone", "Etapa", "Data da Venda", "Valor da Venda", "Empreendimento"…). Se alguma coluna tiver outro nome, defina a variável `DOMMUS_FIELD_MAP`, por exemplo `{"stage":"Status Atual","value":"VGV Negociado","saleDate":"Data Assinatura"}`. Os campos são `name`, `email`, `ddd`, `phone`, `created`, `stage`, `stageType`, `saleDate`, `value`, `product`, `origin`, `media`, `campaign` e `utmContent`.
+
+### 3. UTMs nos anúncios de landing page (comece hoje)
+
+Lead de landing page não passa pelo formulário da Meta, então a única ligação exata é a UTM. Em **Anúncio › Destino › Parâmetros de URL**, use:
+
+```
+utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}
+```
+
+E no formulário da LP, envie a `utm_content` para o Dommus num campo oculto (o webhook do Dommus aceita `campanha`, `midia`, `origem` e `tags`). Grave o `{{ad.id}}` em `midia` ou numa tag e aponte o `DOMMUS_FIELD_MAP` (`"utmContent":"Mídia"`). Lead antigo de LP sem UTM não tem como ser recuperado.
+
 ## Detalhes técnicos
 
 - **O que conta como lead**: a ação `lead` da Meta, que soma formulário instantâneo e lead do pixel no site, sem contar duas vezes. Se a conta usa uma conversão personalizada, defina `LEAD_ACTION_TYPES` (ex.: `offsite_conversion.custom.123456`). **Conversas** = `onsite_conversion.messaging_conversation_started_7d`.
@@ -151,7 +217,10 @@ assets/styles.css          design system (tokens claro/escuro)
 assets/app.js              filtros, agregações, gráficos, tabela, insights
 assets/csv.js              importador do CSV do Gerenciador
 assets/demo.js             dados de demonstração (quando não há sincronização)
+assets/sales-core.js       leitura do export do Dommus (CSV/XLSX/JSON), DE/PARA e equivalência de contatos
 scripts/fetch-meta.mjs     Meta Marketing API → data/insights.json
+scripts/fetch-leads.mjs    leads do formulário, um por um (dados pessoais: só no job e no cache cifrado)
+scripts/build-sales.mjs    Dommus × leads → data/sales.json (cliente mascarado)
 .github/workflows/         sincronização a cada 3 h + publicação na Vercel
 ```
 
