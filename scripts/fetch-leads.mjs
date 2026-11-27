@@ -94,9 +94,13 @@ async function main() {
 
   try {
     // Páginas: as informadas ou as atribuídas ao usuário do sistema. Cada uma tem um token próprio.
+    // Uma Página sem acesso é ignorada (com aviso) em vez de travar as outras
+    let firstErr = null;
     const pages = PAGE_IDS.length
-      ? await Promise.all(PAGE_IDS.map((id) => request(url(id, { fields: 'id,name,access_token' }), TOKEN)))
+      ? (await Promise.all(PAGE_IDS.map((id) => request(url(id, { fields: 'id,name,access_token' }), TOKEN)
+        .catch((e) => { firstErr = firstErr || e; console.warn(`  ! Página ${id} ignorada: ${e.message}`); return null; })))).filter(Boolean)
       : await all('me/accounts', { fields: 'id,name,access_token' }, TOKEN);
+    if (!pages.length && firstErr) throw firstErr;
     status.pages = pages.length;
     if (!pages.length) throw Object.assign(new Error('Nenhuma Página acessível com este token'), { code: 'NO_PAGE' });
     // Só pede o que ainda não está no cache (com 2 dias de folga)
